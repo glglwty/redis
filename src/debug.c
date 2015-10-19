@@ -124,8 +124,8 @@ void computeDatasetDigest(unsigned char *final) {
 
     memset(final,0,20); /* Start with a clean result */
 
-    for (j = 0; j < server.dbnum; j++) {
-        redisDb *db = server.db+j;
+    for (j = 0; j < tls_instance_state->server.dbnum; j++) {
+        redisDb *db = tls_instance_state->server.db+j;
 
         if (dictSize(db->dict) == 0) continue;
         di = dictGetIterator(db->dict);
@@ -267,12 +267,12 @@ void debugCommand(redisClient *c) {
         if (c->argc >= 3) c->argv[2] = tryObjectEncoding(c->argv[2]);
         redisAssertWithInfo(c,c->argv[0],1 == 2);
     } else if (!strcasecmp(c->argv[1]->ptr,"reload")) {
-        if (rdbSave(server.rdb_filename) != REDIS_OK) {
+        if (rdbSave(tls_instance_state->server.rdb_filename) != REDIS_OK) {
             addReply(c,shared.err);
             return;
         }
         emptyDb(NULL);
-        if (rdbLoad(server.rdb_filename) != REDIS_OK) {
+        if (rdbLoad(tls_instance_state->server.rdb_filename) != REDIS_OK) {
             addReplyError(c,"Error trying to load the RDB dump");
             return;
         }
@@ -280,11 +280,11 @@ void debugCommand(redisClient *c) {
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"loadaof")) {
         emptyDb(NULL);
-        if (loadAppendOnlyFile(server.aof_filename) != REDIS_OK) {
+        if (loadAppendOnlyFile(tls_instance_state->server.aof_filename) != REDIS_OK) {
             addReply(c,shared.err);
             return;
         }
-        server.dirty = 0; /* Prevent AOF / replication */
+        tls_instance_state->server.dirty = 0; /* Prevent AOF / replication */
         redisLog(REDIS_WARNING,"Append Only File loaded by DEBUG LOADAOF");
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"object") && c->argc == 3) {
@@ -378,12 +378,12 @@ void debugCommand(redisClient *c) {
     } else if (!strcasecmp(c->argv[1]->ptr,"set-active-expire") &&
                c->argc == 3)
     {
-        server.active_expire_enabled = atoi(c->argv[2]->ptr);
+        tls_instance_state->server.active_expire_enabled = atoi(c->argv[2]->ptr);
         addReply(c,shared.ok);
 #ifdef _WIN32
     } else if (!strcasecmp(c->argv[1]->ptr, "flushload")) {
         emptyDb(NULL);
-        if (rdbLoad(server.rdb_filename) != REDIS_OK) {
+        if (rdbLoad(tls_instance_state->server.rdb_filename) != REDIS_OK) {
             addReplyError(c, "Error trying to load the RDB dump");
             return;
         }
@@ -410,9 +410,9 @@ void _redisAssert(char *estr, char *file, int line) {
     redisLog(REDIS_WARNING,"=== ASSERTION FAILED ===");
     redisLog(REDIS_WARNING,"==> %s:%d '%s' is not true",file,line,estr);
 #ifdef HAVE_BACKTRACE
-    server.assert_failed = estr;
-    server.assert_file = file;
-    server.assert_line = line;
+    tls_instance_state->server.assert_failed = estr;
+    tls_instance_state->server.assert_file = file;
+    tls_instance_state->server.assert_line = line;
     redisLog(REDIS_WARNING,"(forcing SIGSEGV to print the bug report.)");
 #endif
     *((char*)-1) = 'x';
@@ -497,10 +497,10 @@ void _redisPanic(char *msg, char *file, int line) {
 }
 
 void bugReportStart(void) {
-    if (server.bug_report_start == 0) {
+    if (tls_instance_state->server.bug_report_start == 0) {
         redisLog(REDIS_WARNING,
             "\n\n=== REDIS BUG REPORT START: Cut & paste starting from here ===");
-        server.bug_report_start = 1;
+        tls_instance_state->server.bug_report_start = 1;
     }
 }
 
@@ -683,12 +683,12 @@ void logRegisters(ucontext_t *uc) {
 void logStackTrace(ucontext_t *uc) {
     void *trace[100];
     int trace_size = 0, fd;
-    int log_to_stdout = server.logfile[0] == '\0';
+    int log_to_stdout = tls_instance_state->server.logfile[0] == '\0';
 
     /* Open the log file in append mode. */
     fd = log_to_stdout ?
         STDOUT_FILENO :
-        open(server.logfile, O_APPEND|O_CREAT|O_WRONLY, 0644);
+        open(tls_instance_state->server.logfile, O_APPEND|O_CREAT|O_WRONLY, 0644);
     if (fd == -1) return;
 
     /* Generate the stack trace */
@@ -709,9 +709,9 @@ void logStackTrace(ucontext_t *uc) {
  * currently being served by Redis. May be NULL if Redis is not serving a
  * client right now. */
 void logCurrentClient(void) {
-    if (server.current_client == NULL) return;
+    if (tls_instance_state->server.current_client == NULL) return;
 
-    redisClient *cc = server.current_client;
+    redisClient *cc = tls_instance_state->server.current_client;
     sds client;
     int j;
 
@@ -836,8 +836,8 @@ void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
     redisLog(REDIS_WARNING,
         "    Redis %s crashed by signal: %d", REDIS_VERSION, sig);
     redisLog(REDIS_WARNING,
-        "    Failed assertion: %s (%s:%d)", server.assert_failed,
-                        server.assert_file, server.assert_line);
+        "    Failed assertion: %s (%s:%d)", tls_instance_state->server.assert_failed,
+                        tls_instance_state->server.assert_file, tls_instance_state->server.assert_line);
 
     /* Log the stack trace */
     redisLog(REDIS_WARNING, "--- STACK TRACE");
@@ -881,7 +881,7 @@ void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
 "  Suspect RAM error? Use redis-server --test-memory to verify it.\n\n"
 );
     /* free(messages); Don't call free() with possibly corrupted memory. */
-    if (server.daemonize) unlink(server.pidfile);
+    if (tls_instance_state->server.daemonize) unlink(tls_instance_state->server.pidfile);
 
     /* Make sure we exit with the right signal at the end. So for instance
      * the core will be dumped if enabled. */
@@ -968,7 +968,7 @@ void watchdogScheduleSignal(int period) {
 void enableWatchdog(int period) {
     int min_period;
 
-    if (server.watchdog_period == 0) {
+    if (tls_instance_state->server.watchdog_period == 0) {
         struct sigaction act;
 
         /* Watchdog was actually disabled, so we have to setup the signal
@@ -981,16 +981,16 @@ void enableWatchdog(int period) {
     /* If the configured period is smaller than twice the timer period, it is
      * too short for the software watchdog to work reliably. Fix it now
      * if needed. */
-    min_period = (1000/server.hz)*2;
+    min_period = (1000/tls_instance_state->server.hz)*2;
     if (period < min_period) period = min_period;
     watchdogScheduleSignal(period); /* Adjust the current timer. */
-    server.watchdog_period = period;
+    tls_instance_state->server.watchdog_period = period;
 }
 
 /* Disable the software watchdog. */
 void disableWatchdog(void) {
     struct sigaction act;
-    if (server.watchdog_period == 0) return; /* Already disabled. */
+    if (tls_instance_state->server.watchdog_period == 0) return; /* Already disabled. */
     watchdogScheduleSignal(0); /* Stop the current timer. */
 
     /* Set the signal handler to SIG_IGN, this will also remove pending
@@ -999,6 +999,6 @@ void disableWatchdog(void) {
     act.sa_flags = 0;
     act.sa_handler = SIG_IGN;
     sigaction(SIGALRM, &act, NULL);
-    server.watchdog_period = 0;
+    tls_instance_state->server.watchdog_period = 0;
 }
 #endif

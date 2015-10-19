@@ -76,16 +76,16 @@ int yesnotoi(char *s) {
 }
 
 void appendServerSaveParams(time_t seconds, int changes) {
-    server.saveparams = zrealloc(server.saveparams,sizeof(struct saveparam)*(server.saveparamslen+1));
-    server.saveparams[server.saveparamslen].seconds = seconds;
-    server.saveparams[server.saveparamslen].changes = changes;
-    server.saveparamslen++;
+    tls_instance_state->server.saveparams = zrealloc(tls_instance_state->server.saveparams,sizeof(struct saveparam)*(tls_instance_state->server.saveparamslen+1));
+    tls_instance_state->server.saveparams[tls_instance_state->server.saveparamslen].seconds = seconds;
+    tls_instance_state->server.saveparams[tls_instance_state->server.saveparamslen].changes = changes;
+    tls_instance_state->server.saveparamslen++;
 }
 
 void resetServerSaveParams(void) {
-    zfree(server.saveparams);
-    server.saveparams = NULL;
-    server.saveparamslen = 0;
+    zfree(tls_instance_state->server.saveparams);
+    tls_instance_state->server.saveparams = NULL;
+    tls_instance_state->server.saveparamslen = 0;
 }
 
 void loadServerConfigFromString(char *config) {
@@ -121,23 +121,23 @@ void loadServerConfigFromString(char *config) {
 
         /* Execute config directives */
         if (!strcasecmp(argv[0],"timeout") && argc == 2) {
-            server.maxidletime = atoi(argv[1]);
-            if (server.maxidletime < 0) {
+            tls_instance_state->server.maxidletime = atoi(argv[1]);
+            if (tls_instance_state->server.maxidletime < 0) {
                 err = "Invalid timeout value"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"tcp-keepalive") && argc == 2) {
-            server.tcpkeepalive = atoi(argv[1]);
-            if (server.tcpkeepalive < 0) {
+            tls_instance_state->server.tcpkeepalive = atoi(argv[1]);
+            if (tls_instance_state->server.tcpkeepalive < 0) {
                 err = "Invalid tcp-keepalive value"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"port") && argc == 2) {
-            server.port = atoi(argv[1]);
-            if (server.port < 0 || server.port > 65535) {
+            tls_instance_state->server.port = atoi(argv[1]);
+            if (tls_instance_state->server.port < 0 || tls_instance_state->server.port > 65535) {
                 err = "Invalid port"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"tcp-backlog") && argc == 2) {
-            server.tcp_backlog = atoi(argv[1]);
-            if (server.tcp_backlog < 0) {
+            tls_instance_state->server.tcp_backlog = atoi(argv[1]);
+            if (tls_instance_state->server.tcp_backlog < 0) {
                 err = "Invalid backlog value"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"bind") && argc >= 2) {
@@ -147,14 +147,14 @@ void loadServerConfigFromString(char *config) {
                 err = "Too many bind addresses specified"; goto loaderr;
             }
             for (j = 0; j < addresses; j++)
-                server.bindaddr[j] = zstrdup(argv[j+1]);
-            server.bindaddr_count = addresses;
+                tls_instance_state->server.bindaddr[j] = zstrdup(argv[j+1]);
+            tls_instance_state->server.bindaddr_count = addresses;
         } else if (!strcasecmp(argv[0],"unixsocket") && argc == 2) {
-            server.unixsocket = zstrdup(argv[1]);
+            tls_instance_state->server.unixsocket = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"unixsocketperm") && argc == 2) {
             errno = 0;
-            server.unixsocketperm = (mode_t)strtol(argv[1], NULL, 8);
-            if (errno || server.unixsocketperm > 0777) {
+            tls_instance_state->server.unixsocketperm = (mode_t)strtol(argv[1], NULL, 8);
+            if (errno || tls_instance_state->server.unixsocketperm > 0777) {
                 err = "Invalid socket file permissions"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"save")) {
@@ -175,67 +175,67 @@ void loadServerConfigFromString(char *config) {
                 exit(1);
             }
         } else if (!strcasecmp(argv[0],"loglevel") && argc == 2) {
-            if (!strcasecmp(argv[1],"debug")) server.verbosity = REDIS_DEBUG;
-            else if (!strcasecmp(argv[1],"verbose")) server.verbosity = REDIS_VERBOSE;
-            else if (!strcasecmp(argv[1],"notice")) server.verbosity = REDIS_NOTICE;
-            else if (!strcasecmp(argv[1],"warning")) server.verbosity = REDIS_WARNING;
+            if (!strcasecmp(argv[1],"debug")) tls_instance_state->server.verbosity = REDIS_DEBUG;
+            else if (!strcasecmp(argv[1],"verbose")) tls_instance_state->server.verbosity = REDIS_VERBOSE;
+            else if (!strcasecmp(argv[1],"notice")) tls_instance_state->server.verbosity = REDIS_NOTICE;
+            else if (!strcasecmp(argv[1],"warning")) tls_instance_state->server.verbosity = REDIS_WARNING;
             else {
                 err = "Invalid log level. Must be one of debug, notice, warning";
                 goto loaderr;
             }
 #ifdef _WIN32
-            setLogVerbosityLevel(server.verbosity);
+            setLogVerbosityLevel(tls_instance_state->server.verbosity);
 #endif
         } else if (!strcasecmp(argv[0],"logfile") && argc == 2) {
             FILE *logfp;
 
-            zfree(server.logfile);
+            zfree(tls_instance_state->server.logfile);
 #ifdef _WIN32
             int length = (int)sdslen(argv[1]);
             if ((argv[1][0] == '\''  &&  argv[1][length-1] == '\'')  ||
                 (argv[1][0] == '\"'  &&  argv[1][length-1] == '\"')) {
                 if (length == 2) {
-                    server.logfile = zstrdup("\0");
+                    tls_instance_state->server.logfile = zstrdup("\0");
                 } else {
                     size_t l = length - 2 + 1;
                     char *p = zmalloc(l);
                     memcpy(p, argv[1]+1, l);
-                    server.logfile = p;
+                    tls_instance_state->server.logfile = p;
                 }
             } else {
-                server.logfile = zstrdup(argv[1]);
+                tls_instance_state->server.logfile = zstrdup(argv[1]);
             }
 #else
-            server.logfile = zstrdup(argv[1]);
+            tls_instance_state->server.logfile = zstrdup(argv[1]);
 #endif
-            if (server.logfile[0] != '\0') {
+            if (tls_instance_state->server.logfile[0] != '\0') {
                 /* Test if we are able to open the file. The server will not
                  * be able to abort just for this problem later... */
-                logfp = fopen(server.logfile,"a");
+                logfp = fopen(tls_instance_state->server.logfile,"a");
                 if (logfp == NULL) {
                     err = sdscatprintf(sdsempty(),
                         "Can't open the log file: %s", strerror(errno));
                     goto loaderr;
                 } else {
 #ifdef _WIN32
-                    setLogFile( server.logfile );
+                    setLogFile( tls_instance_state->server.logfile );
 #endif
                 }
 
                 fclose(logfp);
             }
         } else if (!strcasecmp(argv[0],"syslog-enabled") && argc == 2) {
-            if ((server.syslog_enabled = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.syslog_enabled = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
 #ifdef _WIN32
-            setSyslogEnabled(server.syslog_enabled);
+            setSyslogEnabled(tls_instance_state->server.syslog_enabled);
 #endif
         } else if (!strcasecmp(argv[0],"syslog-ident") && argc == 2) {
-            if (server.syslog_ident) zfree(server.syslog_ident);
-            server.syslog_ident = zstrdup(argv[1]);
+            if (tls_instance_state->server.syslog_ident) zfree(tls_instance_state->server.syslog_ident);
+            tls_instance_state->server.syslog_ident = zstrdup(argv[1]);
 #ifdef _WIN32
-            setSyslogIdent(server.syslog_ident);
+            setSyslogIdent(tls_instance_state->server.syslog_ident);
 #endif
         } else if (!strcasecmp(argv[0], "syslog-facility") && argc == 2) {
 #ifndef _WIN32 // On Windows ignore syslog-facility
@@ -243,7 +243,7 @@ void loadServerConfigFromString(char *config) {
 
             for (i = 0; validSyslogFacilities[i].name; i++) {
                 if (!strcasecmp(validSyslogFacilities[i].name, argv[1])) {
-                    server.syslog_facility = validSyslogFacilities[i].value;
+                    tls_instance_state->server.syslog_facility = validSyslogFacilities[i].value;
                     break;
                 }
             }
@@ -254,69 +254,69 @@ void loadServerConfigFromString(char *config) {
             }
 #endif
         } else if (!strcasecmp(argv[0],"databases") && argc == 2) {
-            server.dbnum = atoi(argv[1]);
-            if (server.dbnum < 1) {
+            tls_instance_state->server.dbnum = atoi(argv[1]);
+            if (tls_instance_state->server.dbnum < 1) {
                 err = "Invalid number of databases"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"include") && argc == 2) {
             loadServerConfig(argv[1],NULL);
         } else if (!strcasecmp(argv[0],"maxclients") && argc == 2) {
-            server.maxclients = atoi(argv[1]);
-            if (server.maxclients < 1) {
+            tls_instance_state->server.maxclients = atoi(argv[1]);
+            if (tls_instance_state->server.maxclients < 1) {
                 err = "Invalid max clients limit"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"maxmemory") && argc == 2) {
-            server.maxmemory = memtoll(argv[1],NULL);
+            tls_instance_state->server.maxmemory = memtoll(argv[1],NULL);
         } else if (!strcasecmp(argv[0],"maxmemory-policy") && argc == 2) {
             if (!strcasecmp(argv[1],"volatile-lru")) {
-                server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_LRU;
+                tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_LRU;
             } else if (!strcasecmp(argv[1],"volatile-random")) {
-                server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_RANDOM;
+                tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_RANDOM;
             } else if (!strcasecmp(argv[1],"volatile-ttl")) {
-                server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_TTL;
+                tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_TTL;
             } else if (!strcasecmp(argv[1],"allkeys-lru")) {
-                server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_LRU;
+                tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_LRU;
             } else if (!strcasecmp(argv[1],"allkeys-random")) {
-                server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_RANDOM;
+                tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_RANDOM;
             } else if (!strcasecmp(argv[1],"noeviction")) {
-                server.maxmemory_policy = REDIS_MAXMEMORY_NO_EVICTION;
+                tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_NO_EVICTION;
             } else {
                 err = "Invalid maxmemory policy";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"maxmemory-samples") && argc == 2) {
-            server.maxmemory_samples = atoi(argv[1]);
-            if (server.maxmemory_samples <= 0) {
+            tls_instance_state->server.maxmemory_samples = atoi(argv[1]);
+            if (tls_instance_state->server.maxmemory_samples <= 0) {
                 err = "maxmemory-samples must be 1 or greater";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"slaveof") && argc == 3) {
-            server.masterhost = sdsnew(argv[1]);
-            server.masterport = atoi(argv[2]);
-            server.repl_state = REDIS_REPL_CONNECT;
+            tls_instance_state->server.masterhost = sdsnew(argv[1]);
+            tls_instance_state->server.masterport = atoi(argv[2]);
+            tls_instance_state->server.repl_state = REDIS_REPL_CONNECT;
         } else if (!strcasecmp(argv[0],"repl-ping-slave-period") && argc == 2) {
-            server.repl_ping_slave_period = atoi(argv[1]);
-            if (server.repl_ping_slave_period <= 0) {
+            tls_instance_state->server.repl_ping_slave_period = atoi(argv[1]);
+            if (tls_instance_state->server.repl_ping_slave_period <= 0) {
                 err = "repl-ping-slave-period must be 1 or greater";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"repl-timeout") && argc == 2) {
-            server.repl_timeout = atoi(argv[1]);
-            if (server.repl_timeout <= 0) {
+            tls_instance_state->server.repl_timeout = atoi(argv[1]);
+            if (tls_instance_state->server.repl_timeout <= 0) {
                 err = "repl-timeout must be 1 or greater";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"repl-disable-tcp-nodelay") && argc==2) {
-            if ((server.repl_disable_tcp_nodelay = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.repl_disable_tcp_nodelay = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"repl-diskless-sync") && argc==2) {
-            if ((server.repl_diskless_sync = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.repl_diskless_sync = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"repl-diskless-sync-delay") && argc==2) {
-            server.repl_diskless_sync_delay = atoi(argv[1]);
-            if (server.repl_diskless_sync_delay < 0) {
+            tls_instance_state->server.repl_diskless_sync_delay = atoi(argv[1]);
+            if (tls_instance_state->server.repl_diskless_sync_delay < 0) {
                 err = "repl-diskless-sync-delay can't be negative";
                 goto loaderr;
             }
@@ -328,67 +328,67 @@ void loadServerConfigFromString(char *config) {
             }
             resizeReplicationBacklog(size);
         } else if (!strcasecmp(argv[0],"repl-backlog-ttl") && argc == 2) {
-            server.repl_backlog_time_limit = atoi(argv[1]);
-            if (server.repl_backlog_time_limit < 0) {
+            tls_instance_state->server.repl_backlog_time_limit = atoi(argv[1]);
+            if (tls_instance_state->server.repl_backlog_time_limit < 0) {
                 err = "repl-backlog-ttl can't be negative ";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"masterauth") && argc == 2) {
-            server.masterauth = zstrdup(argv[1]);
+            tls_instance_state->server.masterauth = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"slave-serve-stale-data") && argc == 2) {
-            if ((server.repl_serve_stale_data = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.repl_serve_stale_data = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"slave-read-only") && argc == 2) {
-            if ((server.repl_slave_ro = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.repl_slave_ro = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"rdbcompression") && argc == 2) {
-            if ((server.rdb_compression = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.rdb_compression = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"rdbchecksum") && argc == 2) {
-            if ((server.rdb_checksum = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.rdb_checksum = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"activerehashing") && argc == 2) {
-            if ((server.activerehashing = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.activerehashing = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"daemonize") && argc == 2) {
-            if ((server.daemonize = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.daemonize = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"hz") && argc == 2) {
-            server.hz = atoi(argv[1]);
-            if (server.hz < REDIS_MIN_HZ) server.hz = REDIS_MIN_HZ;
-            if (server.hz > REDIS_MAX_HZ) server.hz = REDIS_MAX_HZ;
+            tls_instance_state->server.hz = atoi(argv[1]);
+            if (tls_instance_state->server.hz < REDIS_MIN_HZ) tls_instance_state->server.hz = REDIS_MIN_HZ;
+            if (tls_instance_state->server.hz > REDIS_MAX_HZ) tls_instance_state->server.hz = REDIS_MAX_HZ;
         } else if (!strcasecmp(argv[0],"appendonly") && argc == 2) {
             int yes;
 
             if ((yes = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
-            server.aof_state = yes ? REDIS_AOF_ON : REDIS_AOF_OFF;
+            tls_instance_state->server.aof_state = yes ? REDIS_AOF_ON : REDIS_AOF_OFF;
         } else if (!strcasecmp(argv[0],"appendfilename") && argc == 2) {
             if (!pathIsBaseName(argv[1])) {
                 err = "appendfilename can't be a path, just a filename";
                 goto loaderr;
             }
-            zfree(server.aof_filename);
-            server.aof_filename = zstrdup(argv[1]);
+            zfree(tls_instance_state->server.aof_filename);
+            tls_instance_state->server.aof_filename = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"no-appendfsync-on-rewrite")
                    && argc == 2) {
-            if ((server.aof_no_fsync_on_rewrite= yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.aof_no_fsync_on_rewrite= yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"appendfsync") && argc == 2) {
             if (!strcasecmp(argv[1],"no")) {
-                server.aof_fsync = AOF_FSYNC_NO;
+                tls_instance_state->server.aof_fsync = AOF_FSYNC_NO;
             } else if (!strcasecmp(argv[1],"always")) {
-                server.aof_fsync = AOF_FSYNC_ALWAYS;
+                tls_instance_state->server.aof_fsync = AOF_FSYNC_ALWAYS;
             } else if (!strcasecmp(argv[1],"everysec")) {
-                server.aof_fsync = AOF_FSYNC_EVERYSEC;
+                tls_instance_state->server.aof_fsync = AOF_FSYNC_EVERYSEC;
             } else {
                 err = "argument must be 'no', 'always' or 'everysec'";
                 goto loaderr;
@@ -396,24 +396,24 @@ void loadServerConfigFromString(char *config) {
         } else if (!strcasecmp(argv[0],"auto-aof-rewrite-percentage") &&
                    argc == 2)
         {
-            server.aof_rewrite_perc = atoi(argv[1]);
-            if (server.aof_rewrite_perc < 0) {
+            tls_instance_state->server.aof_rewrite_perc = atoi(argv[1]);
+            if (tls_instance_state->server.aof_rewrite_perc < 0) {
                 err = "Invalid negative percentage for AOF auto rewrite";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"auto-aof-rewrite-min-size") &&
                    argc == 2)
         {
-            server.aof_rewrite_min_size = memtoll(argv[1],NULL);
+            tls_instance_state->server.aof_rewrite_min_size = memtoll(argv[1],NULL);
         } else if (!strcasecmp(argv[0],"aof-rewrite-incremental-fsync") &&
                    argc == 2)
         {
-            if ((server.aof_rewrite_incremental_fsync =
+            if ((tls_instance_state->server.aof_rewrite_incremental_fsync =
                  yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"aof-load-truncated") && argc == 2) {
-            if ((server.aof_load_truncated = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.aof_load_truncated = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"requirepass") && argc == 2) {
@@ -421,33 +421,33 @@ void loadServerConfigFromString(char *config) {
                 err = "Password is longer than REDIS_AUTHPASS_MAX_LEN";
                 goto loaderr;
             }
-            server.requirepass = zstrdup(argv[1]);
+            tls_instance_state->server.requirepass = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"pidfile") && argc == 2) {
-            zfree(server.pidfile);
-            server.pidfile = zstrdup(argv[1]);
+            zfree(tls_instance_state->server.pidfile);
+            tls_instance_state->server.pidfile = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"dbfilename") && argc == 2) {
             if (!pathIsBaseName(argv[1])) {
                 err = "dbfilename can't be a path, just a filename";
                 goto loaderr;
             }
-            zfree(server.rdb_filename);
-            server.rdb_filename = zstrdup(argv[1]);
+            zfree(tls_instance_state->server.rdb_filename);
+            tls_instance_state->server.rdb_filename = zstrdup(argv[1]);
         } else if (!strcasecmp(argv[0],"hash-max-ziplist-entries") && argc == 2) {
-            server.hash_max_ziplist_entries = memtoll(argv[1], NULL);
+            tls_instance_state->server.hash_max_ziplist_entries = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"hash-max-ziplist-value") && argc == 2) {
-            server.hash_max_ziplist_value = memtoll(argv[1], NULL);
+            tls_instance_state->server.hash_max_ziplist_value = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"list-max-ziplist-entries") && argc == 2){
-            server.list_max_ziplist_entries = memtoll(argv[1], NULL);
+            tls_instance_state->server.list_max_ziplist_entries = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"list-max-ziplist-value") && argc == 2) {
-            server.list_max_ziplist_value = memtoll(argv[1], NULL);
+            tls_instance_state->server.list_max_ziplist_value = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"set-max-intset-entries") && argc == 2) {
-            server.set_max_intset_entries = memtoll(argv[1], NULL);
+            tls_instance_state->server.set_max_intset_entries = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"zset-max-ziplist-entries") && argc == 2) {
-            server.zset_max_ziplist_entries = memtoll(argv[1], NULL);
+            tls_instance_state->server.zset_max_ziplist_entries = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"zset-max-ziplist-value") && argc == 2) {
-            server.zset_max_ziplist_value = memtoll(argv[1], NULL);
+            tls_instance_state->server.zset_max_ziplist_value = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"hll-sparse-max-bytes") && argc == 2) {
-            server.hll_sparse_max_bytes = memtoll(argv[1], NULL);
+            tls_instance_state->server.hll_sparse_max_bytes = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"rename-command") && argc == 3) {
             struct redisCommand *cmd = lookupCommand(argv[1]);
             int retval;
@@ -459,35 +459,35 @@ void loadServerConfigFromString(char *config) {
 
             /* If the target command name is the empty string we just
              * remove it from the command table. */
-            retval = dictDelete(server.commands, argv[1]);
+            retval = dictDelete(tls_instance_state->server.commands, argv[1]);
             redisAssert(retval == DICT_OK);
 
             /* Otherwise we re-add the command under a different name. */
             if (sdslen(argv[2]) != 0) {
                 sds copy = sdsdup(argv[2]);
 
-                retval = dictAdd(server.commands, copy, cmd);
+                retval = dictAdd(tls_instance_state->server.commands, copy, cmd);
                 if (retval != DICT_OK) {
                     sdsfree(copy);
                     err = "Target command name already exists"; goto loaderr;
                 }
             }
         } else if (!strcasecmp(argv[0],"lua-time-limit") && argc == 2) {
-            server.lua_time_limit = strtoll(argv[1],NULL,10);
+            tls_instance_state->server.lua_time_limit = strtoll(argv[1],NULL,10);
         } else if (!strcasecmp(argv[0],"slowlog-log-slower-than") &&
                    argc == 2)
         {
-            server.slowlog_log_slower_than = strtoll(argv[1],NULL,10);
+            tls_instance_state->server.slowlog_log_slower_than = strtoll(argv[1],NULL,10);
         } else if (!strcasecmp(argv[0],"latency-monitor-threshold") &&
                    argc == 2)
         {
-            server.latency_monitor_threshold = strtoll(argv[1],NULL,10);
-            if (server.latency_monitor_threshold < 0) {
+            tls_instance_state->server.latency_monitor_threshold = strtoll(argv[1],NULL,10);
+            if (tls_instance_state->server.latency_monitor_threshold < 0) {
                 err = "The latency threshold can't be negative";
                 goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"slowlog-max-len") && argc == 2) {
-            server.slowlog_max_len = (PORT_ULONG)(strtoll(argv[1],NULL,10));
+            tls_instance_state->server.slowlog_max_len = (PORT_ULONG)(strtoll(argv[1],NULL,10));
         } else if (!strcasecmp(argv[0],"client-output-buffer-limit") &&
                    argc == 5)
         {
@@ -506,24 +506,24 @@ void loadServerConfigFromString(char *config) {
                 err = "Negative number of seconds in soft limit is invalid";
                 goto loaderr;
             }
-            server.client_obuf_limits[class].hard_limit_bytes = hard;
-            server.client_obuf_limits[class].soft_limit_bytes = soft;
-            server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
+            tls_instance_state->server.client_obuf_limits[class].hard_limit_bytes = hard;
+            tls_instance_state->server.client_obuf_limits[class].soft_limit_bytes = soft;
+            tls_instance_state->server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
         } else if (!strcasecmp(argv[0],"stop-writes-on-bgsave-error") &&
                    argc == 2) {
-            if ((server.stop_writes_on_bgsave_err = yesnotoi(argv[1])) == -1) {
+            if ((tls_instance_state->server.stop_writes_on_bgsave_err = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"slave-priority") && argc == 2) {
-            server.slave_priority = atoi(argv[1]);
+            tls_instance_state->server.slave_priority = atoi(argv[1]);
         } else if (!strcasecmp(argv[0],"min-slaves-to-write") && argc == 2) {
-            server.repl_min_slaves_to_write = atoi(argv[1]);
-            if (server.repl_min_slaves_to_write < 0) {
+            tls_instance_state->server.repl_min_slaves_to_write = atoi(argv[1]);
+            if (tls_instance_state->server.repl_min_slaves_to_write < 0) {
                 err = "Invalid value for min-slaves-to-write."; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"min-slaves-max-lag") && argc == 2) {
-            server.repl_min_slaves_max_lag = atoi(argv[1]);
-            if (server.repl_min_slaves_max_lag < 0) {
+            tls_instance_state->server.repl_min_slaves_max_lag = atoi(argv[1]);
+            if (tls_instance_state->server.repl_min_slaves_max_lag < 0) {
                 err = "Invalid value for min-slaves-max-lag."; goto loaderr;
             }
         } else if (!strcasecmp(argv[0],"notify-keyspace-events") && argc == 2) {
@@ -533,12 +533,12 @@ void loadServerConfigFromString(char *config) {
                 err = "Invalid event class character. Use 'g$lshzxeA'.";
                 goto loaderr;
             }
-            server.notify_keyspace_events = flags;
+            tls_instance_state->server.notify_keyspace_events = flags;
         } else if (!strcasecmp(argv[0],"sentinel")) {
             /* argc == 1 is handled by main() as we need to enter the sentinel
              * mode ASAP. */
             if (argc != 1) {
-                if (!server.sentinel_mode) {
+                if (!tls_instance_state->server.sentinel_mode) {
                     err = "sentinel directive while not in sentinel mode";
                     goto loaderr;
                 }
@@ -562,9 +562,9 @@ void loadServerConfigFromString(char *config) {
                 bgsave = sdsnew("bgsave");
                 bgrewriteaof = sdsnew("bgrewriteaof");
 
-                retval = dictDelete(server.commands, bgsave);
+                retval = dictDelete(tls_instance_state->server.commands, bgsave);
                 redisAssert(retval == DICT_OK);
-                retval = dictDelete(server.commands, bgrewriteaof);
+                retval = dictDelete(tls_instance_state->server.commands, bgrewriteaof);
                 redisAssert(retval == DICT_OK);
 
                 sdsfree(bgsave);
@@ -647,91 +647,91 @@ void configSetCommand(redisClient *c) {
             addReplyError(c, "dbfilename can't be a path, just a filename");
             return;
         }
-        zfree(server.rdb_filename);
-        server.rdb_filename = zstrdup(o->ptr);
+        zfree(tls_instance_state->server.rdb_filename);
+        tls_instance_state->server.rdb_filename = zstrdup(o->ptr);
     } else if (!strcasecmp(c->argv[2]->ptr,"requirepass")) {
         if (sdslen(o->ptr) > REDIS_AUTHPASS_MAX_LEN) goto badfmt;
-        zfree(server.requirepass);
-        server.requirepass = ((char*)o->ptr)[0] ? zstrdup(o->ptr) : NULL;
+        zfree(tls_instance_state->server.requirepass);
+        tls_instance_state->server.requirepass = ((char*)o->ptr)[0] ? zstrdup(o->ptr) : NULL;
     } else if (!strcasecmp(c->argv[2]->ptr,"masterauth")) {
-        zfree(server.masterauth);
-        server.masterauth = ((char*)o->ptr)[0] ? zstrdup(o->ptr) : NULL;
+        zfree(tls_instance_state->server.masterauth);
+        tls_instance_state->server.masterauth = ((char*)o->ptr)[0] ? zstrdup(o->ptr) : NULL;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll < 0) goto badfmt;
-        server.maxmemory = ll;
-        if (server.maxmemory) {
-            if (server.maxmemory < zmalloc_used_memory()) {
+        tls_instance_state->server.maxmemory = ll;
+        if (tls_instance_state->server.maxmemory) {
+            if (tls_instance_state->server.maxmemory < zmalloc_used_memory()) {
                 redisLog(REDIS_WARNING,"WARNING: the new maxmemory value set via CONFIG SET is smaller than the current memory usage. This will result in keys eviction and/or inability to accept new write commands depending on the maxmemory-policy.");
             }
             freeMemoryIfNeeded();
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"maxclients")) {
-        int orig_value = server.maxclients;
+        int orig_value = tls_instance_state->server.maxclients;
 
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 1) goto badfmt;
 
         /* Try to check if the OS is capable of supporting so many FDs. */
-        server.maxclients = (int)ll;
+        tls_instance_state->server.maxclients = (int)ll;
         if (ll > orig_value) {
             adjustOpenFilesLimit();
-            if (server.maxclients != ll) {
-                addReplyErrorFormat(c,"The operating system is not able to handle the specified number of clients, try with %d", server.maxclients);
-                server.maxclients = orig_value;
+            if (tls_instance_state->server.maxclients != ll) {
+                addReplyErrorFormat(c,"The operating system is not able to handle the specified number of clients, try with %d", tls_instance_state->server.maxclients);
+                tls_instance_state->server.maxclients = orig_value;
                 return;
             }
-            if ((unsigned int) aeGetSetSize(server.el) <
-                server.maxclients + REDIS_EVENTLOOP_FDSET_INCR)
+            if ((unsigned int) aeGetSetSize(tls_instance_state->server.el) <
+                tls_instance_state->server.maxclients + REDIS_EVENTLOOP_FDSET_INCR)
             {
-                if (aeResizeSetSize(server.el,
-                    server.maxclients + REDIS_EVENTLOOP_FDSET_INCR) == AE_ERR)
+                if (aeResizeSetSize(tls_instance_state->server.el,
+                    tls_instance_state->server.maxclients + REDIS_EVENTLOOP_FDSET_INCR) == AE_ERR)
                 {
                     addReplyError(c,"The event loop API used by Redis is not able to handle the specified number of clients");
-                    server.maxclients = orig_value;
+                    tls_instance_state->server.maxclients = orig_value;
                     return;
                 }
             }
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"hz")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.hz = (int)ll;
-        if (server.hz < REDIS_MIN_HZ) server.hz = REDIS_MIN_HZ;
-        if (server.hz > REDIS_MAX_HZ) server.hz = REDIS_MAX_HZ;
+        tls_instance_state->server.hz = (int)ll;
+        if (tls_instance_state->server.hz < REDIS_MIN_HZ) tls_instance_state->server.hz = REDIS_MIN_HZ;
+        if (tls_instance_state->server.hz > REDIS_MAX_HZ) tls_instance_state->server.hz = REDIS_MAX_HZ;
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-policy")) {
         if (!strcasecmp(o->ptr,"volatile-lru")) {
-            server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_LRU;
+            tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_LRU;
         } else if (!strcasecmp(o->ptr,"volatile-random")) {
-            server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_RANDOM;
+            tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_RANDOM;
         } else if (!strcasecmp(o->ptr,"volatile-ttl")) {
-            server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_TTL;
+            tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_VOLATILE_TTL;
         } else if (!strcasecmp(o->ptr,"allkeys-lru")) {
-            server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_LRU;
+            tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_LRU;
         } else if (!strcasecmp(o->ptr,"allkeys-random")) {
-            server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_RANDOM;
+            tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_ALLKEYS_RANDOM;
         } else if (!strcasecmp(o->ptr,"noeviction")) {
-            server.maxmemory_policy = REDIS_MAXMEMORY_NO_EVICTION;
+            tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_NO_EVICTION;
         } else {
             goto badfmt;
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"maxmemory-samples")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll <= 0) goto badfmt;
-        server.maxmemory_samples = (int)ll;
+        tls_instance_state->server.maxmemory_samples = (int)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"timeout")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll < 0 || ll > PORT_LONG_MAX) goto badfmt;
-        server.maxidletime = (int)ll;
+        tls_instance_state->server.maxidletime = (int)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"tcp-keepalive")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll < 0 || ll > INT_MAX) goto badfmt;
-        server.tcpkeepalive = (int)ll;
+        tls_instance_state->server.tcpkeepalive = (int)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"appendfsync")) {
         if (!strcasecmp(o->ptr,"no")) {
-            server.aof_fsync = AOF_FSYNC_NO;
+            tls_instance_state->server.aof_fsync = AOF_FSYNC_NO;
         } else if (!strcasecmp(o->ptr,"everysec")) {
-            server.aof_fsync = AOF_FSYNC_EVERYSEC;
+            tls_instance_state->server.aof_fsync = AOF_FSYNC_EVERYSEC;
         } else if (!strcasecmp(o->ptr,"always")) {
-            server.aof_fsync = AOF_FSYNC_ALWAYS;
+            tls_instance_state->server.aof_fsync = AOF_FSYNC_ALWAYS;
         } else {
             goto badfmt;
         }
@@ -739,14 +739,14 @@ void configSetCommand(redisClient *c) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.aof_no_fsync_on_rewrite = yn;
+        tls_instance_state->server.aof_no_fsync_on_rewrite = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"appendonly")) {
         int enable = yesnotoi(o->ptr);
 
         if (enable == -1) goto badfmt;
-        if (enable == 0 && server.aof_state != REDIS_AOF_OFF) {
+        if (enable == 0 && tls_instance_state->server.aof_state != REDIS_AOF_OFF) {
             stopAppendOnly();
-        } else if (enable && server.aof_state == REDIS_AOF_OFF) {
+        } else if (enable && tls_instance_state->server.aof_state == REDIS_AOF_OFF) {
             if (startAppendOnly() == REDIS_ERR) {
                 addReplyError(c,
                     "Unable to turn on AOF. Check server logs.");
@@ -755,20 +755,20 @@ void configSetCommand(redisClient *c) {
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"auto-aof-rewrite-percentage")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.aof_rewrite_perc = (int)ll;
+        tls_instance_state->server.aof_rewrite_perc = (int)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"auto-aof-rewrite-min-size")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.aof_rewrite_min_size = ll;
+        tls_instance_state->server.aof_rewrite_min_size = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"aof-rewrite-incremental-fsync")) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.aof_rewrite_incremental_fsync = yn;
+        tls_instance_state->server.aof_rewrite_incremental_fsync = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"aof-load-truncated")) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.aof_load_truncated = yn;
+        tls_instance_state->server.aof_load_truncated = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"save")) {
         int vlen, j;
         sds *v = sdssplitlen(o->ptr,(int)sdslen(o->ptr)," ",1,&vlen);
@@ -807,17 +807,17 @@ void configSetCommand(redisClient *c) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.repl_serve_stale_data = yn;
+        tls_instance_state->server.repl_serve_stale_data = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"slave-read-only")) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.repl_slave_ro = yn;
+        tls_instance_state->server.repl_slave_ro = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"activerehashing")) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.activerehashing = yn;
+        tls_instance_state->server.activerehashing = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"dir")) {
         if (chdir((char*)o->ptr) == -1) {
             addReplyErrorFormat(c,"Changing directory: %s", strerror(errno));
@@ -825,54 +825,54 @@ void configSetCommand(redisClient *c) {
         }
     } else if (!strcasecmp(c->argv[2]->ptr,"hash-max-ziplist-entries")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.hash_max_ziplist_entries = ll;
+        tls_instance_state->server.hash_max_ziplist_entries = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"hash-max-ziplist-value")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.hash_max_ziplist_value = ll;
+        tls_instance_state->server.hash_max_ziplist_value = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"list-max-ziplist-entries")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.list_max_ziplist_entries = ll;
+        tls_instance_state->server.list_max_ziplist_entries = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"list-max-ziplist-value")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.list_max_ziplist_value = ll;
+        tls_instance_state->server.list_max_ziplist_value = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"set-max-intset-entries")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.set_max_intset_entries = ll;
+        tls_instance_state->server.set_max_intset_entries = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"zset-max-ziplist-entries")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.zset_max_ziplist_entries = ll;
+        tls_instance_state->server.zset_max_ziplist_entries = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"zset-max-ziplist-value")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.zset_max_ziplist_value = ll;
+        tls_instance_state->server.zset_max_ziplist_value = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"hll-sparse-max-bytes")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.hll_sparse_max_bytes = ll;
+        tls_instance_state->server.hll_sparse_max_bytes = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"lua-time-limit")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.lua_time_limit = ll;
+        tls_instance_state->server.lua_time_limit = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"slowlog-log-slower-than")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR) goto badfmt;
-        server.slowlog_log_slower_than = ll;
+        tls_instance_state->server.slowlog_log_slower_than = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"slowlog-max-len")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.slowlog_max_len = (unsigned)ll;
+        tls_instance_state->server.slowlog_max_len = (unsigned)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"latency-monitor-threshold")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.latency_monitor_threshold = ll;
+        tls_instance_state->server.latency_monitor_threshold = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"loglevel")) {
         if (!strcasecmp(o->ptr,"warning")) {
-            server.verbosity = REDIS_WARNING;
+            tls_instance_state->server.verbosity = REDIS_WARNING;
         } else if (!strcasecmp(o->ptr,"notice")) {
-            server.verbosity = REDIS_NOTICE;
+            tls_instance_state->server.verbosity = REDIS_NOTICE;
         } else if (!strcasecmp(o->ptr,"verbose")) {
-            server.verbosity = REDIS_VERBOSE;
+            tls_instance_state->server.verbosity = REDIS_VERBOSE;
         } else if (!strcasecmp(o->ptr,"debug")) {
-            server.verbosity = REDIS_DEBUG;
+            tls_instance_state->server.verbosity = REDIS_DEBUG;
         } else {
             goto badfmt;
         }
 #ifdef _WIN32
-        setLogVerbosityLevel(server.verbosity);
+        setLogVerbosityLevel(tls_instance_state->server.verbosity);
 #endif
     } else if (!strcasecmp(c->argv[2]->ptr,"client-output-buffer-limit")) {
         int vlen, j;
@@ -915,28 +915,28 @@ void configSetCommand(redisClient *c) {
             soft = strtoll(v[j+2],NULL,10);
             soft_seconds = (int)strtoll(v[j+3],NULL,10);
 
-            server.client_obuf_limits[class].hard_limit_bytes = hard;
-            server.client_obuf_limits[class].soft_limit_bytes = soft;
-            server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
+            tls_instance_state->server.client_obuf_limits[class].hard_limit_bytes = hard;
+            tls_instance_state->server.client_obuf_limits[class].soft_limit_bytes = soft;
+            tls_instance_state->server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
         }
         sdsfreesplitres(v,vlen);
     } else if (!strcasecmp(c->argv[2]->ptr,"stop-writes-on-bgsave-error")) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.stop_writes_on_bgsave_err = yn;
+        tls_instance_state->server.stop_writes_on_bgsave_err = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"repl-ping-slave-period")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll <= 0) goto badfmt;
-        server.repl_ping_slave_period = (int)ll;
+        tls_instance_state->server.repl_ping_slave_period = (int)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"repl-timeout")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll <= 0) goto badfmt;
-        server.repl_timeout = (int)ll;
+        tls_instance_state->server.repl_timeout = (int)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"repl-backlog-size")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll <= 0) goto badfmt;
         resizeReplicationBacklog(ll);
     } else if (!strcasecmp(c->argv[2]->ptr,"repl-backlog-ttl")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
-        server.repl_backlog_time_limit = ll;
+        tls_instance_state->server.repl_backlog_time_limit = ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"watchdog-period")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
         if (ll)
@@ -947,39 +947,39 @@ void configSetCommand(redisClient *c) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.rdb_compression = yn;
+        tls_instance_state->server.rdb_compression = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"notify-keyspace-events")) {
         int flags = keyspaceEventsStringToFlags(o->ptr);
 
         if (flags == -1) goto badfmt;
-        server.notify_keyspace_events = flags;
+        tls_instance_state->server.notify_keyspace_events = flags;
     } else if (!strcasecmp(c->argv[2]->ptr,"repl-disable-tcp-nodelay")) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.repl_disable_tcp_nodelay = yn;
+        tls_instance_state->server.repl_disable_tcp_nodelay = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"repl-diskless-sync")) {
         int yn = yesnotoi(o->ptr);
 
         if (yn == -1) goto badfmt;
-        server.repl_diskless_sync = yn;
+        tls_instance_state->server.repl_diskless_sync = yn;
     } else if (!strcasecmp(c->argv[2]->ptr,"repl-diskless-sync-delay")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll < 0) goto badfmt;
-        server.repl_diskless_sync_delay = (int)ll;                              /* UPSTREAM_ISSUE: missing (int) cast */
+        tls_instance_state->server.repl_diskless_sync_delay = (int)ll;                              /* UPSTREAM_ISSUE: missing (int) cast */
     } else if (!strcasecmp(c->argv[2]->ptr,"slave-priority")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll < 0) goto badfmt;
-        server.slave_priority = (int)ll;
+        tls_instance_state->server.slave_priority = (int)ll;
     } else if (!strcasecmp(c->argv[2]->ptr,"min-slaves-to-write")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll < 0) goto badfmt;
-        server.repl_min_slaves_to_write = (int)ll;
+        tls_instance_state->server.repl_min_slaves_to_write = (int)ll;
         refreshGoodSlavesCount();
     } else if (!strcasecmp(c->argv[2]->ptr,"min-slaves-max-lag")) {
         if (getLongLongFromObject(o,&ll) == REDIS_ERR ||
             ll < 0) goto badfmt;
-        server.repl_min_slaves_max_lag = (int)ll;
+        tls_instance_state->server.repl_min_slaves_max_lag = (int)ll;
         refreshGoodSlavesCount();
     } else {
         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
@@ -1033,87 +1033,87 @@ void configGetCommand(redisClient *c) {
     redisAssertWithInfo(c,o,o->encoding == REDIS_ENCODING_RAW);
 
     /* String values */
-    config_get_string_field("dbfilename",server.rdb_filename);
-    config_get_string_field("requirepass",server.requirepass);
-    config_get_string_field("masterauth",server.masterauth);
-    config_get_string_field("unixsocket",server.unixsocket);
-    config_get_string_field("logfile",server.logfile);
-    config_get_string_field("pidfile",server.pidfile);
+    config_get_string_field("dbfilename",tls_instance_state->server.rdb_filename);
+    config_get_string_field("requirepass",tls_instance_state->server.requirepass);
+    config_get_string_field("masterauth",tls_instance_state->server.masterauth);
+    config_get_string_field("unixsocket",tls_instance_state->server.unixsocket);
+    config_get_string_field("logfile",tls_instance_state->server.logfile);
+    config_get_string_field("pidfile",tls_instance_state->server.pidfile);
 
     /* Numerical values */
-    config_get_numerical_field("maxmemory",server.maxmemory);
-    config_get_numerical_field("maxmemory-samples",server.maxmemory_samples);
-    config_get_numerical_field("timeout",server.maxidletime);
-    config_get_numerical_field("tcp-keepalive",server.tcpkeepalive);
+    config_get_numerical_field("maxmemory",tls_instance_state->server.maxmemory);
+    config_get_numerical_field("maxmemory-samples",tls_instance_state->server.maxmemory_samples);
+    config_get_numerical_field("timeout",tls_instance_state->server.maxidletime);
+    config_get_numerical_field("tcp-keepalive",tls_instance_state->server.tcpkeepalive);
     config_get_numerical_field("auto-aof-rewrite-percentage",
-            server.aof_rewrite_perc);
+            tls_instance_state->server.aof_rewrite_perc);
     config_get_numerical_field("auto-aof-rewrite-min-size",
-            server.aof_rewrite_min_size);
+            tls_instance_state->server.aof_rewrite_min_size);
     config_get_numerical_field("hash-max-ziplist-entries",
-            server.hash_max_ziplist_entries);
+            tls_instance_state->server.hash_max_ziplist_entries);
     config_get_numerical_field("hash-max-ziplist-value",
-            server.hash_max_ziplist_value);
+            tls_instance_state->server.hash_max_ziplist_value);
     config_get_numerical_field("list-max-ziplist-entries",
-            server.list_max_ziplist_entries);
+            tls_instance_state->server.list_max_ziplist_entries);
     config_get_numerical_field("list-max-ziplist-value",
-            server.list_max_ziplist_value);
+            tls_instance_state->server.list_max_ziplist_value);
     config_get_numerical_field("set-max-intset-entries",
-            server.set_max_intset_entries);
+            tls_instance_state->server.set_max_intset_entries);
     config_get_numerical_field("zset-max-ziplist-entries",
-            server.zset_max_ziplist_entries);
+            tls_instance_state->server.zset_max_ziplist_entries);
     config_get_numerical_field("zset-max-ziplist-value",
-            server.zset_max_ziplist_value);
+            tls_instance_state->server.zset_max_ziplist_value);
     config_get_numerical_field("hll-sparse-max-bytes",
-            server.hll_sparse_max_bytes);
-    config_get_numerical_field("lua-time-limit",server.lua_time_limit);
+            tls_instance_state->server.hll_sparse_max_bytes);
+    config_get_numerical_field("lua-time-limit",tls_instance_state->server.lua_time_limit);
     config_get_numerical_field("slowlog-log-slower-than",
-            server.slowlog_log_slower_than);
+            tls_instance_state->server.slowlog_log_slower_than);
     config_get_numerical_field("latency-monitor-threshold",
-            server.latency_monitor_threshold);
+            tls_instance_state->server.latency_monitor_threshold);
     config_get_numerical_field("slowlog-max-len",
-            server.slowlog_max_len);
-    config_get_numerical_field("port",server.port);
-    config_get_numerical_field("tcp-backlog",server.tcp_backlog);
-    config_get_numerical_field("databases",server.dbnum);
-    config_get_numerical_field("repl-ping-slave-period",server.repl_ping_slave_period);
-    config_get_numerical_field("repl-timeout",server.repl_timeout);
-    config_get_numerical_field("repl-backlog-size",server.repl_backlog_size);
-    config_get_numerical_field("repl-backlog-ttl",server.repl_backlog_time_limit);
-    config_get_numerical_field("maxclients",server.maxclients);
-    config_get_numerical_field("watchdog-period",server.watchdog_period);
-    config_get_numerical_field("slave-priority",server.slave_priority);
-    config_get_numerical_field("min-slaves-to-write",server.repl_min_slaves_to_write);
-    config_get_numerical_field("min-slaves-max-lag",server.repl_min_slaves_max_lag);
-    config_get_numerical_field("hz",server.hz);
-    config_get_numerical_field("repl-diskless-sync-delay",server.repl_diskless_sync_delay);
+            tls_instance_state->server.slowlog_max_len);
+    config_get_numerical_field("port",tls_instance_state->server.port);
+    config_get_numerical_field("tcp-backlog",tls_instance_state->server.tcp_backlog);
+    config_get_numerical_field("databases",tls_instance_state->server.dbnum);
+    config_get_numerical_field("repl-ping-slave-period",tls_instance_state->server.repl_ping_slave_period);
+    config_get_numerical_field("repl-timeout",tls_instance_state->server.repl_timeout);
+    config_get_numerical_field("repl-backlog-size",tls_instance_state->server.repl_backlog_size);
+    config_get_numerical_field("repl-backlog-ttl",tls_instance_state->server.repl_backlog_time_limit);
+    config_get_numerical_field("maxclients",tls_instance_state->server.maxclients);
+    config_get_numerical_field("watchdog-period",tls_instance_state->server.watchdog_period);
+    config_get_numerical_field("slave-priority",tls_instance_state->server.slave_priority);
+    config_get_numerical_field("min-slaves-to-write",tls_instance_state->server.repl_min_slaves_to_write);
+    config_get_numerical_field("min-slaves-max-lag",tls_instance_state->server.repl_min_slaves_max_lag);
+    config_get_numerical_field("hz",tls_instance_state->server.hz);
+    config_get_numerical_field("repl-diskless-sync-delay",tls_instance_state->server.repl_diskless_sync_delay);
 
     /* Bool (yes/no) values */
     config_get_bool_field("no-appendfsync-on-rewrite",
-            server.aof_no_fsync_on_rewrite);
+            tls_instance_state->server.aof_no_fsync_on_rewrite);
     config_get_bool_field("slave-serve-stale-data",
-            server.repl_serve_stale_data);
+            tls_instance_state->server.repl_serve_stale_data);
     config_get_bool_field("slave-read-only",
-            server.repl_slave_ro);
+            tls_instance_state->server.repl_slave_ro);
     config_get_bool_field("stop-writes-on-bgsave-error",
-            server.stop_writes_on_bgsave_err);
-    config_get_bool_field("daemonize", server.daemonize);
-    config_get_bool_field("rdbcompression", server.rdb_compression);
-    config_get_bool_field("rdbchecksum", server.rdb_checksum);
-    config_get_bool_field("activerehashing", server.activerehashing);
+            tls_instance_state->server.stop_writes_on_bgsave_err);
+    config_get_bool_field("daemonize", tls_instance_state->server.daemonize);
+    config_get_bool_field("rdbcompression", tls_instance_state->server.rdb_compression);
+    config_get_bool_field("rdbchecksum", tls_instance_state->server.rdb_checksum);
+    config_get_bool_field("activerehashing", tls_instance_state->server.activerehashing);
     config_get_bool_field("repl-disable-tcp-nodelay",
-            server.repl_disable_tcp_nodelay);
+            tls_instance_state->server.repl_disable_tcp_nodelay);
     config_get_bool_field("repl-diskless-sync",
-            server.repl_diskless_sync);
+            tls_instance_state->server.repl_diskless_sync);
     config_get_bool_field("aof-rewrite-incremental-fsync",
-            server.aof_rewrite_incremental_fsync);
+            tls_instance_state->server.aof_rewrite_incremental_fsync);
     config_get_bool_field("aof-load-truncated",
-            server.aof_load_truncated);
+            tls_instance_state->server.aof_load_truncated);
 
     /* Everything we can't handle with macros follows. */
 
     if (stringmatch(pattern,"appendonly",0)) {
         addReplyBulkCString(c,"appendonly");
-        addReplyBulkCString(c,server.aof_state == REDIS_AOF_OFF ? "no" : "yes");
+        addReplyBulkCString(c,tls_instance_state->server.aof_state == REDIS_AOF_OFF ? "no" : "yes");
         matches++;
     }
     if (stringmatch(pattern,"dir",0)) {
@@ -1129,7 +1129,7 @@ void configGetCommand(redisClient *c) {
     if (stringmatch(pattern,"maxmemory-policy",0)) {
         char *s;
 
-        switch(server.maxmemory_policy) {
+        switch(tls_instance_state->server.maxmemory_policy) {
         case REDIS_MAXMEMORY_VOLATILE_LRU: s = "volatile-lru"; break;
         case REDIS_MAXMEMORY_VOLATILE_TTL: s = "volatile-ttl"; break;
         case REDIS_MAXMEMORY_VOLATILE_RANDOM: s = "volatile-random"; break;
@@ -1145,7 +1145,7 @@ void configGetCommand(redisClient *c) {
     if (stringmatch(pattern,"appendfsync",0)) {
         char *policy;
 
-        switch(server.aof_fsync) {
+        switch(tls_instance_state->server.aof_fsync) {
         case AOF_FSYNC_NO: policy = "no"; break;
         case AOF_FSYNC_EVERYSEC: policy = "everysec"; break;
         case AOF_FSYNC_ALWAYS: policy = "always"; break;
@@ -1159,11 +1159,11 @@ void configGetCommand(redisClient *c) {
         sds buf = sdsempty();
         int j;
 
-        for (j = 0; j < server.saveparamslen; j++) {
+        for (j = 0; j < tls_instance_state->server.saveparamslen; j++) {
             buf = sdscatprintf(buf,"%jd %d",
-                    (intmax_t)server.saveparams[j].seconds,
-                    server.saveparams[j].changes);
-            if (j != server.saveparamslen-1)
+                    (intmax_t)tls_instance_state->server.saveparams[j].seconds,
+                    tls_instance_state->server.saveparams[j].changes);
+            if (j != tls_instance_state->server.saveparamslen-1)
                 buf = sdscatlen(buf," ",1);
         }
         addReplyBulkCString(c,"save");
@@ -1174,7 +1174,7 @@ void configGetCommand(redisClient *c) {
     if (stringmatch(pattern,"loglevel",0)) {
         char *s;
 
-        switch(server.verbosity) {
+        switch(tls_instance_state->server.verbosity) {
         case REDIS_WARNING: s = "warning"; break;
         case REDIS_VERBOSE: s = "verbose"; break;
         case REDIS_NOTICE: s = "notice"; break;
@@ -1192,9 +1192,9 @@ void configGetCommand(redisClient *c) {
         for (j = 0; j < REDIS_CLIENT_TYPE_COUNT; j++) {
             buf = sdscatprintf(buf,"%s %llu %llu %ld",
                     getClientTypeName(j),
-                    server.client_obuf_limits[j].hard_limit_bytes,
-                    server.client_obuf_limits[j].soft_limit_bytes,
-                    (PORT_LONG) server.client_obuf_limits[j].soft_limit_seconds);
+                    tls_instance_state->server.client_obuf_limits[j].hard_limit_bytes,
+                    tls_instance_state->server.client_obuf_limits[j].soft_limit_bytes,
+                    (PORT_LONG) tls_instance_state->server.client_obuf_limits[j].soft_limit_seconds);
             if (j != REDIS_CLIENT_TYPE_COUNT-1)
                 buf = sdscatlen(buf," ",1);
         }
@@ -1205,7 +1205,7 @@ void configGetCommand(redisClient *c) {
     }
     if (stringmatch(pattern,"unixsocketperm",0)) {
         char buf[32];
-        snprintf(buf,sizeof(buf),"%o",server.unixsocketperm);
+        snprintf(buf,sizeof(buf),"%o",tls_instance_state->server.unixsocketperm);
         addReplyBulkCString(c,"unixsocketperm");
         addReplyBulkCString(c,buf);
         matches++;
@@ -1214,9 +1214,9 @@ void configGetCommand(redisClient *c) {
         char buf[256];
 
         addReplyBulkCString(c,"slaveof");
-        if (server.masterhost)
+        if (tls_instance_state->server.masterhost)
             snprintf(buf,sizeof(buf),"%s %d",
-                server.masterhost, server.masterport);
+                tls_instance_state->server.masterhost, tls_instance_state->server.masterport);
         else
             buf[0] = '\0';
         addReplyBulkCString(c,buf);
@@ -1224,7 +1224,7 @@ void configGetCommand(redisClient *c) {
     }
     if (stringmatch(pattern,"notify-keyspace-events",0)) {
         robj *flagsobj = createObject(REDIS_STRING,
-            keyspaceEventsFlagsToString(server.notify_keyspace_events));
+            keyspaceEventsFlagsToString(tls_instance_state->server.notify_keyspace_events));
 
         addReplyBulkCString(c,"notify-keyspace-events");
         addReplyBulk(c,flagsobj);
@@ -1232,7 +1232,7 @@ void configGetCommand(redisClient *c) {
         matches++;
     }
     if (stringmatch(pattern,"bind",0)) {
-        sds aux = sdsjoin(server.bindaddr,server.bindaddr_count," ");
+        sds aux = sdsjoin(tls_instance_state->server.bindaddr,tls_instance_state->server.bindaddr_count," ");
 
         addReplyBulkCString(c,"bind");
         addReplyBulkCString(c,aux);
@@ -1533,7 +1533,7 @@ void rewriteConfigEnumOption(struct rewriteConfigState *state, char *option, int
 #ifndef _WIN32
 /* Rewrite the syslog-facility option. */
 void rewriteConfigSyslogfacilityOption(struct rewriteConfigState *state) {
-    int value = server.syslog_facility, j;
+    int value = tls_instance_state->server.syslog_facility, j;
     int force = value != LOG_LOCAL0;
     char *name = NULL, *option = "syslog-facility";
     sds line;
@@ -1557,12 +1557,12 @@ void rewriteConfigSaveOption(struct rewriteConfigState *state) {
     /* Note that if there are no save parameters at all, all the current
      * config line with "save" will be detected as orphaned and deleted,
      * resulting into no RDB persistence as expected. */
-    for (j = 0; j < server.saveparamslen; j++) {
+    for (j = 0; j < tls_instance_state->server.saveparamslen; j++) {
         line = sdscatprintf(sdsempty(),"save %ld %d",
-            (PORT_LONG) server.saveparams[j].seconds, server.saveparams[j].changes);
+            (PORT_LONG) tls_instance_state->server.saveparams[j].seconds, tls_instance_state->server.saveparams[j].changes);
         rewriteConfigRewriteLine(state,"save",line,1);
     }
-    /* Mark "save" as processed in case server.saveparamslen is zero. */
+    /* Mark "save" as processed in case tls_instance_state->server.saveparamslen is zero. */
     rewriteConfigMarkAsProcessed(state,"save");
 }
 
@@ -1584,22 +1584,22 @@ void rewriteConfigSlaveofOption(struct rewriteConfigState *state) {
 
     /* If this is a master, we want all the slaveof config options
      * in the file to be removed. */
-    if (server.masterhost == NULL) {
+    if (tls_instance_state->server.masterhost == NULL) {
         rewriteConfigMarkAsProcessed(state,"slaveof");
         return;
     }
     line = sdscatprintf(sdsempty(),"%s %s %d", option,
-        server.masterhost, server.masterport);
+        tls_instance_state->server.masterhost, tls_instance_state->server.masterport);
     rewriteConfigRewriteLine(state,option,line,1);
 }
 
 /* Rewrite the notify-keyspace-events option. */
 void rewriteConfigNotifykeyspaceeventsOption(struct rewriteConfigState *state) {
-    int force = server.notify_keyspace_events != 0;
+    int force = tls_instance_state->server.notify_keyspace_events != 0;
     char *option = "notify-keyspace-events";
     sds line, flags;
 
-    flags = keyspaceEventsFlagsToString(server.notify_keyspace_events);
+    flags = keyspaceEventsFlagsToString(tls_instance_state->server.notify_keyspace_events);
     line = sdsnew(option);
     line = sdscatlen(line, " ", 1);
     line = sdscatrepr(line, flags, sdslen(flags));
@@ -1613,23 +1613,23 @@ void rewriteConfigClientoutputbufferlimitOption(struct rewriteConfigState *state
     char *option = "client-output-buffer-limit";
 
     for (j = 0; j < REDIS_CLIENT_TYPE_COUNT; j++) {
-        int force = (server.client_obuf_limits[j].hard_limit_bytes !=
+        int force = (tls_instance_state->server.client_obuf_limits[j].hard_limit_bytes !=
                     clientBufferLimitsDefaults[j].hard_limit_bytes) ||
-                    (server.client_obuf_limits[j].soft_limit_bytes !=
+                    (tls_instance_state->server.client_obuf_limits[j].soft_limit_bytes !=
                     clientBufferLimitsDefaults[j].soft_limit_bytes) ||
-                    (server.client_obuf_limits[j].soft_limit_seconds !=
+                    (tls_instance_state->server.client_obuf_limits[j].soft_limit_seconds !=
                     clientBufferLimitsDefaults[j].soft_limit_seconds);
         sds line;
         char hard[64], soft[64];
 
         rewriteConfigFormatMemory(hard,sizeof(hard),
-                server.client_obuf_limits[j].hard_limit_bytes);
+                tls_instance_state->server.client_obuf_limits[j].hard_limit_bytes);
         rewriteConfigFormatMemory(soft,sizeof(soft),
-                server.client_obuf_limits[j].soft_limit_bytes);
+                tls_instance_state->server.client_obuf_limits[j].soft_limit_bytes);
 
         line = sdscatprintf(sdsempty(),"%s %s %s %s %ld",
                 option, getClientTypeName(j), hard, soft,
-                (PORT_LONG) server.client_obuf_limits[j].soft_limit_seconds);
+                (PORT_LONG) tls_instance_state->server.client_obuf_limits[j].soft_limit_seconds);
         rewriteConfigRewriteLine(state,option,line,force);
     }
 }
@@ -1641,13 +1641,13 @@ void rewriteConfigBindOption(struct rewriteConfigState *state) {
     char *option = "bind";
 
     /* Nothing to rewrite if we don't have bind addresses. */
-    if (server.bindaddr_count == 0) {
+    if (tls_instance_state->server.bindaddr_count == 0) {
         rewriteConfigMarkAsProcessed(state,option);
         return;
     }
 
     /* Rewrite as bind <addr1> <addr2> ... <addrN> */
-    addresses = sdsjoin(server.bindaddr,server.bindaddr_count," ");
+    addresses = sdsjoin(tls_instance_state->server.bindaddr,tls_instance_state->server.bindaddr_count," ");
     line = sdsnew(option);
     line = sdscatlen(line, " ", 1);
     line = sdscatsds(line, addresses);
@@ -1799,52 +1799,52 @@ int rewriteConfig(char *path) {
     /* Step 2: rewrite every single option, replacing or appending it inside
      * the rewrite state. */
 
-    rewriteConfigYesNoOption(state,"daemonize",server.daemonize,0);
-    rewriteConfigStringOption(state,"pidfile",server.pidfile,REDIS_DEFAULT_PID_FILE);
-    rewriteConfigNumericalOption(state,"port",server.port,REDIS_SERVERPORT);
-    rewriteConfigNumericalOption(state,"tcp-backlog",server.tcp_backlog,REDIS_TCP_BACKLOG);
+    rewriteConfigYesNoOption(state,"daemonize",tls_instance_state->server.daemonize,0);
+    rewriteConfigStringOption(state,"pidfile",tls_instance_state->server.pidfile,REDIS_DEFAULT_PID_FILE);
+    rewriteConfigNumericalOption(state,"port",tls_instance_state->server.port,REDIS_SERVERPORT);
+    rewriteConfigNumericalOption(state,"tcp-backlog",tls_instance_state->server.tcp_backlog,REDIS_TCP_BACKLOG);
     rewriteConfigBindOption(state);
-    rewriteConfigStringOption(state,"unixsocket",server.unixsocket,NULL);
-    rewriteConfigOctalOption(state,"unixsocketperm",server.unixsocketperm,REDIS_DEFAULT_UNIX_SOCKET_PERM);
-    rewriteConfigNumericalOption(state,"timeout",server.maxidletime,REDIS_MAXIDLETIME);
-    rewriteConfigNumericalOption(state,"tcp-keepalive",server.tcpkeepalive,REDIS_DEFAULT_TCP_KEEPALIVE);
-    rewriteConfigEnumOption(state,"loglevel",server.verbosity,
+    rewriteConfigStringOption(state,"unixsocket",tls_instance_state->server.unixsocket,NULL);
+    rewriteConfigOctalOption(state,"unixsocketperm",tls_instance_state->server.unixsocketperm,REDIS_DEFAULT_UNIX_SOCKET_PERM);
+    rewriteConfigNumericalOption(state,"timeout",tls_instance_state->server.maxidletime,REDIS_MAXIDLETIME);
+    rewriteConfigNumericalOption(state,"tcp-keepalive",tls_instance_state->server.tcpkeepalive,REDIS_DEFAULT_TCP_KEEPALIVE);
+    rewriteConfigEnumOption(state,"loglevel",tls_instance_state->server.verbosity,
         "debug", REDIS_DEBUG,
         "verbose", REDIS_VERBOSE,
         "notice", REDIS_NOTICE,
         "warning", REDIS_WARNING,
         NULL, REDIS_DEFAULT_VERBOSITY);
-    rewriteConfigStringOption(state,"logfile",server.logfile,REDIS_DEFAULT_LOGFILE);
-    rewriteConfigYesNoOption(state,"syslog-enabled",server.syslog_enabled,REDIS_DEFAULT_SYSLOG_ENABLED);
-    rewriteConfigStringOption(state,"syslog-ident",server.syslog_ident,REDIS_DEFAULT_SYSLOG_IDENT);
+    rewriteConfigStringOption(state,"logfile",tls_instance_state->server.logfile,REDIS_DEFAULT_LOGFILE);
+    rewriteConfigYesNoOption(state,"syslog-enabled",tls_instance_state->server.syslog_enabled,REDIS_DEFAULT_SYSLOG_ENABLED);
+    rewriteConfigStringOption(state,"syslog-ident",tls_instance_state->server.syslog_ident,REDIS_DEFAULT_SYSLOG_IDENT);
 #ifndef _WIN32
     rewriteConfigSyslogfacilityOption(state);
 #endif
     rewriteConfigSaveOption(state);
-    rewriteConfigNumericalOption(state,"databases",server.dbnum,REDIS_DEFAULT_DBNUM);
-    rewriteConfigYesNoOption(state,"stop-writes-on-bgsave-error",server.stop_writes_on_bgsave_err,REDIS_DEFAULT_STOP_WRITES_ON_BGSAVE_ERROR);
-    rewriteConfigYesNoOption(state,"rdbcompression",server.rdb_compression,REDIS_DEFAULT_RDB_COMPRESSION);
-    rewriteConfigYesNoOption(state,"rdbchecksum",server.rdb_checksum,REDIS_DEFAULT_RDB_CHECKSUM);
-    rewriteConfigStringOption(state,"dbfilename",server.rdb_filename,REDIS_DEFAULT_RDB_FILENAME);
+    rewriteConfigNumericalOption(state,"databases",tls_instance_state->server.dbnum,REDIS_DEFAULT_DBNUM);
+    rewriteConfigYesNoOption(state,"stop-writes-on-bgsave-error",tls_instance_state->server.stop_writes_on_bgsave_err,REDIS_DEFAULT_STOP_WRITES_ON_BGSAVE_ERROR);
+    rewriteConfigYesNoOption(state,"rdbcompression",tls_instance_state->server.rdb_compression,REDIS_DEFAULT_RDB_COMPRESSION);
+    rewriteConfigYesNoOption(state,"rdbchecksum",tls_instance_state->server.rdb_checksum,REDIS_DEFAULT_RDB_CHECKSUM);
+    rewriteConfigStringOption(state,"dbfilename",tls_instance_state->server.rdb_filename,REDIS_DEFAULT_RDB_FILENAME);
     rewriteConfigDirOption(state);
     rewriteConfigSlaveofOption(state);
-    rewriteConfigStringOption(state,"masterauth",server.masterauth,NULL);
-    rewriteConfigYesNoOption(state,"slave-serve-stale-data",server.repl_serve_stale_data,REDIS_DEFAULT_SLAVE_SERVE_STALE_DATA);
-    rewriteConfigYesNoOption(state,"slave-read-only",server.repl_slave_ro,REDIS_DEFAULT_SLAVE_READ_ONLY);
-    rewriteConfigNumericalOption(state,"repl-ping-slave-period",server.repl_ping_slave_period,REDIS_REPL_PING_SLAVE_PERIOD);
-    rewriteConfigNumericalOption(state,"repl-timeout",server.repl_timeout,REDIS_REPL_TIMEOUT);
-    rewriteConfigBytesOption(state,"repl-backlog-size",server.repl_backlog_size,REDIS_DEFAULT_REPL_BACKLOG_SIZE);
-    rewriteConfigBytesOption(state,"repl-backlog-ttl",server.repl_backlog_time_limit,REDIS_DEFAULT_REPL_BACKLOG_TIME_LIMIT);
-    rewriteConfigYesNoOption(state,"repl-disable-tcp-nodelay",server.repl_disable_tcp_nodelay,REDIS_DEFAULT_REPL_DISABLE_TCP_NODELAY);
-    rewriteConfigYesNoOption(state,"repl-diskless-sync",server.repl_diskless_sync,REDIS_DEFAULT_REPL_DISKLESS_SYNC);
-    rewriteConfigNumericalOption(state,"repl-diskless-sync-delay",server.repl_diskless_sync_delay,REDIS_DEFAULT_REPL_DISKLESS_SYNC_DELAY);
-    rewriteConfigNumericalOption(state,"slave-priority",server.slave_priority,REDIS_DEFAULT_SLAVE_PRIORITY);
-    rewriteConfigNumericalOption(state,"min-slaves-to-write",server.repl_min_slaves_to_write,REDIS_DEFAULT_MIN_SLAVES_TO_WRITE);
-    rewriteConfigNumericalOption(state,"min-slaves-max-lag",server.repl_min_slaves_max_lag,REDIS_DEFAULT_MIN_SLAVES_MAX_LAG);
-    rewriteConfigStringOption(state,"requirepass",server.requirepass,NULL);
-    rewriteConfigNumericalOption(state,"maxclients",server.maxclients,REDIS_MAX_CLIENTS);
-    rewriteConfigBytesOption(state,"maxmemory",server.maxmemory,REDIS_DEFAULT_MAXMEMORY);
-    rewriteConfigEnumOption(state,"maxmemory-policy",server.maxmemory_policy,
+    rewriteConfigStringOption(state,"masterauth",tls_instance_state->server.masterauth,NULL);
+    rewriteConfigYesNoOption(state,"slave-serve-stale-data",tls_instance_state->server.repl_serve_stale_data,REDIS_DEFAULT_SLAVE_SERVE_STALE_DATA);
+    rewriteConfigYesNoOption(state,"slave-read-only",tls_instance_state->server.repl_slave_ro,REDIS_DEFAULT_SLAVE_READ_ONLY);
+    rewriteConfigNumericalOption(state,"repl-ping-slave-period",tls_instance_state->server.repl_ping_slave_period,REDIS_REPL_PING_SLAVE_PERIOD);
+    rewriteConfigNumericalOption(state,"repl-timeout",tls_instance_state->server.repl_timeout,REDIS_REPL_TIMEOUT);
+    rewriteConfigBytesOption(state,"repl-backlog-size",tls_instance_state->server.repl_backlog_size,REDIS_DEFAULT_REPL_BACKLOG_SIZE);
+    rewriteConfigBytesOption(state,"repl-backlog-ttl",tls_instance_state->server.repl_backlog_time_limit,REDIS_DEFAULT_REPL_BACKLOG_TIME_LIMIT);
+    rewriteConfigYesNoOption(state,"repl-disable-tcp-nodelay",tls_instance_state->server.repl_disable_tcp_nodelay,REDIS_DEFAULT_REPL_DISABLE_TCP_NODELAY);
+    rewriteConfigYesNoOption(state,"repl-diskless-sync",tls_instance_state->server.repl_diskless_sync,REDIS_DEFAULT_REPL_DISKLESS_SYNC);
+    rewriteConfigNumericalOption(state,"repl-diskless-sync-delay",tls_instance_state->server.repl_diskless_sync_delay,REDIS_DEFAULT_REPL_DISKLESS_SYNC_DELAY);
+    rewriteConfigNumericalOption(state,"slave-priority",tls_instance_state->server.slave_priority,REDIS_DEFAULT_SLAVE_PRIORITY);
+    rewriteConfigNumericalOption(state,"min-slaves-to-write",tls_instance_state->server.repl_min_slaves_to_write,REDIS_DEFAULT_MIN_SLAVES_TO_WRITE);
+    rewriteConfigNumericalOption(state,"min-slaves-max-lag",tls_instance_state->server.repl_min_slaves_max_lag,REDIS_DEFAULT_MIN_SLAVES_MAX_LAG);
+    rewriteConfigStringOption(state,"requirepass",tls_instance_state->server.requirepass,NULL);
+    rewriteConfigNumericalOption(state,"maxclients",tls_instance_state->server.maxclients,REDIS_MAX_CLIENTS);
+    rewriteConfigBytesOption(state,"maxmemory",tls_instance_state->server.maxmemory,REDIS_DEFAULT_MAXMEMORY);
+    rewriteConfigEnumOption(state,"maxmemory-policy",tls_instance_state->server.maxmemory_policy,
         "volatile-lru", REDIS_MAXMEMORY_VOLATILE_LRU,
         "allkeys-lru", REDIS_MAXMEMORY_ALLKEYS_LRU,
         "volatile-random", REDIS_MAXMEMORY_VOLATILE_RANDOM,
@@ -1852,36 +1852,36 @@ int rewriteConfig(char *path) {
         "volatile-ttl", REDIS_MAXMEMORY_VOLATILE_TTL,
         "noeviction", REDIS_MAXMEMORY_NO_EVICTION,
         NULL, REDIS_DEFAULT_MAXMEMORY_POLICY);
-    rewriteConfigNumericalOption(state,"maxmemory-samples",server.maxmemory_samples,REDIS_DEFAULT_MAXMEMORY_SAMPLES);
-    rewriteConfigYesNoOption(state,"appendonly",server.aof_state != REDIS_AOF_OFF,0);
-    rewriteConfigStringOption(state,"appendfilename",server.aof_filename,REDIS_DEFAULT_AOF_FILENAME);
-    rewriteConfigEnumOption(state,"appendfsync",server.aof_fsync,
+    rewriteConfigNumericalOption(state,"maxmemory-samples",tls_instance_state->server.maxmemory_samples,REDIS_DEFAULT_MAXMEMORY_SAMPLES);
+    rewriteConfigYesNoOption(state,"appendonly",tls_instance_state->server.aof_state != REDIS_AOF_OFF,0);
+    rewriteConfigStringOption(state,"appendfilename",tls_instance_state->server.aof_filename,REDIS_DEFAULT_AOF_FILENAME);
+    rewriteConfigEnumOption(state,"appendfsync",tls_instance_state->server.aof_fsync,
         "everysec", AOF_FSYNC_EVERYSEC,
         "always", AOF_FSYNC_ALWAYS,
         "no", AOF_FSYNC_NO,
         NULL, REDIS_DEFAULT_AOF_FSYNC);
-    rewriteConfigYesNoOption(state,"no-appendfsync-on-rewrite",server.aof_no_fsync_on_rewrite,REDIS_DEFAULT_AOF_NO_FSYNC_ON_REWRITE);
-    rewriteConfigNumericalOption(state,"auto-aof-rewrite-percentage",server.aof_rewrite_perc,REDIS_AOF_REWRITE_PERC);
-    rewriteConfigBytesOption(state,"auto-aof-rewrite-min-size",server.aof_rewrite_min_size,REDIS_AOF_REWRITE_MIN_SIZE);
-    rewriteConfigNumericalOption(state,"lua-time-limit",server.lua_time_limit,REDIS_LUA_TIME_LIMIT);
-    rewriteConfigNumericalOption(state,"slowlog-log-slower-than",server.slowlog_log_slower_than,REDIS_SLOWLOG_LOG_SLOWER_THAN);
-    rewriteConfigNumericalOption(state,"latency-monitor-threshold",server.latency_monitor_threshold,REDIS_DEFAULT_LATENCY_MONITOR_THRESHOLD);
-    rewriteConfigNumericalOption(state,"slowlog-max-len",server.slowlog_max_len,REDIS_SLOWLOG_MAX_LEN);
+    rewriteConfigYesNoOption(state,"no-appendfsync-on-rewrite",tls_instance_state->server.aof_no_fsync_on_rewrite,REDIS_DEFAULT_AOF_NO_FSYNC_ON_REWRITE);
+    rewriteConfigNumericalOption(state,"auto-aof-rewrite-percentage",tls_instance_state->server.aof_rewrite_perc,REDIS_AOF_REWRITE_PERC);
+    rewriteConfigBytesOption(state,"auto-aof-rewrite-min-size",tls_instance_state->server.aof_rewrite_min_size,REDIS_AOF_REWRITE_MIN_SIZE);
+    rewriteConfigNumericalOption(state,"lua-time-limit",tls_instance_state->server.lua_time_limit,REDIS_LUA_TIME_LIMIT);
+    rewriteConfigNumericalOption(state,"slowlog-log-slower-than",tls_instance_state->server.slowlog_log_slower_than,REDIS_SLOWLOG_LOG_SLOWER_THAN);
+    rewriteConfigNumericalOption(state,"latency-monitor-threshold",tls_instance_state->server.latency_monitor_threshold,REDIS_DEFAULT_LATENCY_MONITOR_THRESHOLD);
+    rewriteConfigNumericalOption(state,"slowlog-max-len",tls_instance_state->server.slowlog_max_len,REDIS_SLOWLOG_MAX_LEN);
     rewriteConfigNotifykeyspaceeventsOption(state);
-    rewriteConfigNumericalOption(state,"hash-max-ziplist-entries",server.hash_max_ziplist_entries,REDIS_HASH_MAX_ZIPLIST_ENTRIES);
-    rewriteConfigNumericalOption(state,"hash-max-ziplist-value",server.hash_max_ziplist_value,REDIS_HASH_MAX_ZIPLIST_VALUE);
-    rewriteConfigNumericalOption(state,"list-max-ziplist-entries",server.list_max_ziplist_entries,REDIS_LIST_MAX_ZIPLIST_ENTRIES);
-    rewriteConfigNumericalOption(state,"list-max-ziplist-value",server.list_max_ziplist_value,REDIS_LIST_MAX_ZIPLIST_VALUE);
-    rewriteConfigNumericalOption(state,"set-max-intset-entries",server.set_max_intset_entries,REDIS_SET_MAX_INTSET_ENTRIES);
-    rewriteConfigNumericalOption(state,"zset-max-ziplist-entries",server.zset_max_ziplist_entries,REDIS_ZSET_MAX_ZIPLIST_ENTRIES);
-    rewriteConfigNumericalOption(state,"zset-max-ziplist-value",server.zset_max_ziplist_value,REDIS_ZSET_MAX_ZIPLIST_VALUE);
-    rewriteConfigNumericalOption(state,"hll-sparse-max-bytes",server.hll_sparse_max_bytes,REDIS_DEFAULT_HLL_SPARSE_MAX_BYTES);
-    rewriteConfigYesNoOption(state,"activerehashing",server.activerehashing,REDIS_DEFAULT_ACTIVE_REHASHING);
+    rewriteConfigNumericalOption(state,"hash-max-ziplist-entries",tls_instance_state->server.hash_max_ziplist_entries,REDIS_HASH_MAX_ZIPLIST_ENTRIES);
+    rewriteConfigNumericalOption(state,"hash-max-ziplist-value",tls_instance_state->server.hash_max_ziplist_value,REDIS_HASH_MAX_ZIPLIST_VALUE);
+    rewriteConfigNumericalOption(state,"list-max-ziplist-entries",tls_instance_state->server.list_max_ziplist_entries,REDIS_LIST_MAX_ZIPLIST_ENTRIES);
+    rewriteConfigNumericalOption(state,"list-max-ziplist-value",tls_instance_state->server.list_max_ziplist_value,REDIS_LIST_MAX_ZIPLIST_VALUE);
+    rewriteConfigNumericalOption(state,"set-max-intset-entries",tls_instance_state->server.set_max_intset_entries,REDIS_SET_MAX_INTSET_ENTRIES);
+    rewriteConfigNumericalOption(state,"zset-max-ziplist-entries",tls_instance_state->server.zset_max_ziplist_entries,REDIS_ZSET_MAX_ZIPLIST_ENTRIES);
+    rewriteConfigNumericalOption(state,"zset-max-ziplist-value",tls_instance_state->server.zset_max_ziplist_value,REDIS_ZSET_MAX_ZIPLIST_VALUE);
+    rewriteConfigNumericalOption(state,"hll-sparse-max-bytes",tls_instance_state->server.hll_sparse_max_bytes,REDIS_DEFAULT_HLL_SPARSE_MAX_BYTES);
+    rewriteConfigYesNoOption(state,"activerehashing",tls_instance_state->server.activerehashing,REDIS_DEFAULT_ACTIVE_REHASHING);
     rewriteConfigClientoutputbufferlimitOption(state);
-    rewriteConfigNumericalOption(state,"hz",server.hz,REDIS_DEFAULT_HZ);
-    rewriteConfigYesNoOption(state,"aof-rewrite-incremental-fsync",server.aof_rewrite_incremental_fsync,REDIS_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC);
-    rewriteConfigYesNoOption(state,"aof-load-truncated",server.aof_load_truncated,REDIS_DEFAULT_AOF_LOAD_TRUNCATED);
-    if (server.sentinel_mode) rewriteConfigSentinelOption(state);
+    rewriteConfigNumericalOption(state,"hz",tls_instance_state->server.hz,REDIS_DEFAULT_HZ);
+    rewriteConfigYesNoOption(state,"aof-rewrite-incremental-fsync",tls_instance_state->server.aof_rewrite_incremental_fsync,REDIS_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC);
+    rewriteConfigYesNoOption(state,"aof-load-truncated",tls_instance_state->server.aof_load_truncated,REDIS_DEFAULT_AOF_LOAD_TRUNCATED);
+    if (tls_instance_state->server.sentinel_mode) rewriteConfigSentinelOption(state);
 
     /* Step 3: remove all the orphaned lines in the old file, that is, lines
      * that were used by a config option and are no longer used, like in case
@@ -1891,7 +1891,7 @@ int rewriteConfig(char *path) {
     /* Step 4: generate a new configuration file from the modified state
      * and write it into the original file. */
     newcontent = rewriteConfigGetContentFromState(state);
-    retval = rewriteConfigOverwriteFile(server.configfile,newcontent);
+    retval = rewriteConfigOverwriteFile(tls_instance_state->server.configfile,newcontent);
 
     sdsfree(newcontent);
     rewriteConfigReleaseState(state);
@@ -1916,11 +1916,11 @@ void configCommand(redisClient *c) {
         addReply(c,shared.ok);
     } else if (!strcasecmp(c->argv[1]->ptr,"rewrite")) {
         if (c->argc != 2) goto badarity;
-        if (server.configfile == NULL) {
+        if (tls_instance_state->server.configfile == NULL) {
             addReplyError(c,"The server is running without a config file");
             return;
         }
-        if (rewriteConfig(server.configfile) == -1) {
+        if (rewriteConfig(tls_instance_state->server.configfile) == -1) {
             redisLog(REDIS_WARNING,"CONFIG REWRITE failed: %s", strerror(errno));
             addReplyErrorFormat(c,"Rewriting config file: %s", strerror(errno));
         } else {

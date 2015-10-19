@@ -58,7 +58,7 @@ int setTypeAdd(robj *subject, robj *value) {
             if (success) {
                 /* Convert to regular set when the intset contains
                  * too many entries. */
-                if (intsetLen(subject->ptr) > server.set_max_intset_entries)
+                if (intsetLen(subject->ptr) > tls_instance_state->server.set_max_intset_entries)
                     setTypeConvert(subject,REDIS_ENCODING_HT);
                 return 1;
             }
@@ -270,7 +270,7 @@ void saddCommand(redisClient *c) {
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_SET,"sadd",c->argv[1],c->db->id);
     }
-    server.dirty += added;
+    tls_instance_state->server.dirty += added;
     addReplyLongLong(c,added);
 }
 
@@ -297,7 +297,7 @@ void sremCommand(redisClient *c) {
         if (keyremoved)
             notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",c->argv[1],
                                 c->db->id);
-        server.dirty += deleted;
+        tls_instance_state->server.dirty += deleted;
     }
     addReplyLongLong(c,deleted);
 }
@@ -339,7 +339,7 @@ void smoveCommand(redisClient *c) {
     }
     signalModifiedKey(c->db,c->argv[1]);
     signalModifiedKey(c->db,c->argv[2]);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 
     /* Create the destination set when it doesn't exist */
     if (!dstset) {
@@ -349,7 +349,7 @@ void smoveCommand(redisClient *c) {
 
     /* An extra key has changed when ele was successfully added to dstset */
     if (setTypeAdd(dstset,ele)) {
-        server.dirty++;
+        tls_instance_state->server.dirty++;
         notifyKeyspaceEvent(REDIS_NOTIFY_SET,"sadd",c->argv[2],c->db->id);
     }
     addReply(c,shared.cone);
@@ -407,7 +407,7 @@ void spopCommand(redisClient *c) {
         notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
     }
     signalModifiedKey(c->db,c->argv[1]);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 }
 
 /* handle the "SRANDMEMBER key <count>" variant. The normal version of the
@@ -610,7 +610,7 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, PORT_ULONG setnum, rob
             if (dstkey) {
                 if (dbDelete(c->db,dstkey)) {
                     signalModifiedKey(c->db,dstkey);
-                    server.dirty++;
+                    tls_instance_state->server.dirty++;
                 }
                 addReply(c,shared.czero);
             } else {
@@ -720,7 +720,7 @@ void sinterGenericCommand(redisClient *c, robj **setkeys, PORT_ULONG setnum, rob
                     dstkey,c->db->id);
         }
         signalModifiedKey(c->db,dstkey);
-        server.dirty++;
+        tls_instance_state->server.dirty++;
     } else {
         setDeferredMultiBulkLength(c,replylen,cardinality);
     }
@@ -892,7 +892,7 @@ void sunionDiffGenericCommand(redisClient *c, robj **setkeys, int setnum, robj *
                     dstkey,c->db->id);
         }
         signalModifiedKey(c->db,dstkey);
-        server.dirty++;
+        tls_instance_state->server.dirty++;
     }
     zfree(sets);
 }

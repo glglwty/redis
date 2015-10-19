@@ -44,7 +44,7 @@ void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
 
     for (i = start; i <= end; i++) {
         if (argv[i]->encoding == REDIS_ENCODING_RAW &&
-            sdslen(argv[i]->ptr) > server.hash_max_ziplist_value)
+            sdslen(argv[i]->ptr) > tls_instance_state->server.hash_max_ziplist_value)
         {
             hashTypeConvert(o, REDIS_ENCODING_HT);
             break;
@@ -204,7 +204,7 @@ int hashTypeSet(robj *o, robj *field, robj *value) {
         decrRefCount(value);
 
         /* Check if the ziplist needs to be converted to a hash table */
-        if (hashTypeLength(o) > server.hash_max_ziplist_entries)
+        if (hashTypeLength(o) > tls_instance_state->server.hash_max_ziplist_entries)
             hashTypeConvert(o, REDIS_ENCODING_HT);
     } else if (o->encoding == REDIS_ENCODING_HT) {
         if (dictReplace(o->ptr, field, value)) { /* Insert */
@@ -475,7 +475,7 @@ void hsetCommand(redisClient *c) {
     addReply(c, update ? shared.czero : shared.cone);
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hset",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 }
 
 void hsetnxCommand(redisClient *c) {
@@ -491,7 +491,7 @@ void hsetnxCommand(redisClient *c) {
         addReply(c, shared.cone);
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hset",c->argv[1],c->db->id);
-        server.dirty++;
+        tls_instance_state->server.dirty++;
     }
 }
 
@@ -513,7 +513,7 @@ void hmsetCommand(redisClient *c) {
     addReply(c, shared.ok);
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hset",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 }
 
 void hincrbyCommand(redisClient *c) {
@@ -547,7 +547,7 @@ void hincrbyCommand(redisClient *c) {
     addReplyLongLong(c,value);
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hincrby",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 }
 
 void hincrbyfloatCommand(redisClient *c) {
@@ -574,7 +574,7 @@ void hincrbyfloatCommand(redisClient *c) {
     addReplyBulk(c, new);
     signalModifiedKey(c->db, c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_HASH, "hincrbyfloat", c->argv[1], c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 
     /* Always replicate HINCRBYFLOAT as an HSET command with the final value
      * in order to make sure that differences in float pricision or formatting
@@ -675,7 +675,7 @@ void hdelCommand(redisClient *c) {
         if (keyremoved)
             notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",c->argv[1],
                                 c->db->id);
-        server.dirty += deleted;
+        tls_instance_state->server.dirty += deleted;
     }
     addReplyLongLong(c,deleted);
 }

@@ -123,7 +123,7 @@ void restoreCommand(redisClient *c) {
     if (ttl) setExpire(c->db,c->argv[1],mstime()+ttl);
     signalModifiedKey(c->db,c->argv[1]);
     addReply(c,shared.ok);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 }
 
 /* MIGRATE host port key dbid timeout */
@@ -151,11 +151,11 @@ void migrateCommand(redisClient *c) {
     }
 
     /* Connect */
-    fd = anetTcpNonBlockConnect(server.neterr,c->argv[1]->ptr,
+    fd = anetTcpNonBlockConnect(tls_instance_state->server.neterr,c->argv[1]->ptr,
                 atoi(c->argv[2]->ptr));
     if (fd == -1) {
         addReplyErrorFormat(c,"Can't connect to target node: %s",
-            server.neterr);
+            tls_instance_state->server.neterr);
         return;
     }
     if ((aeWait(fd,AE_WRITABLE,timeout) & AE_WRITABLE) == 0) {
@@ -243,7 +243,7 @@ void migrateCommand(redisClient *c) {
             dbDelete(c->db,c->argv[3]);
             signalModifiedKey(c->db,c->argv[3]);
             addReply(c,shared.ok);
-            server.dirty++;
+            tls_instance_state->server.dirty++;
 
             /* Translate MIGRATE as DEL for replication/AOF. */
             aux = createStringObject("DEL",3);

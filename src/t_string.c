@@ -82,7 +82,7 @@ void setGenericCommand(redisClient *c, int flags, robj *key, robj *val, robj *ex
         return;
     }
     setKey(c->db,key,val);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
     if (expire) setExpire(c->db,key,mstime()+milliseconds);
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"set",key,c->db->id);
     if (expire) notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,
@@ -166,7 +166,7 @@ void getsetCommand(redisClient *c) {
     c->argv[2] = tryObjectEncoding(c->argv[2]);
     setKey(c->db,c->argv[1],c->argv[2]);
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"set",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
 }
 
 void setrangeCommand(redisClient *c) {
@@ -224,7 +224,7 @@ void setrangeCommand(redisClient *c) {
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_STRING,
             "setrange",c->argv[1],c->db->id);
-        server.dirty++;
+        tls_instance_state->server.dirty++;
     }
     addReplyLongLong(c,sdslen(o->ptr));
 }
@@ -310,7 +310,7 @@ void msetGenericCommand(redisClient *c, int nx) {
         setKey(c->db,c->argv[j],c->argv[j+1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"set",c->argv[j],c->db->id);
     }
-    server.dirty += (c->argc-1)/2;
+    tls_instance_state->server.dirty += (c->argc-1)/2;
     addReply(c, nx ? shared.cone : shared.ok);
 }
 
@@ -344,7 +344,7 @@ void incrDecrCommand(redisClient *c, PORT_LONGLONG incr) {
         dbAdd(c->db,c->argv[1],new);
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"incrby",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
     addReply(c,shared.colon);
     addReply(c,new);
     addReply(c,shared.crlf);
@@ -394,7 +394,7 @@ void incrbyfloatCommand(redisClient *c) {
         dbAdd(c->db,c->argv[1],new);
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"incrbyfloat",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
     addReplyBulk(c,new);
 
     /* Always replicate INCRBYFLOAT as a SET command with the final value
@@ -435,7 +435,7 @@ void appendCommand(redisClient *c) {
     }
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"append",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
     addReplyLongLong(c,totlen);
 }
 

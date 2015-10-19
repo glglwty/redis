@@ -67,9 +67,9 @@ redisClient *createClient(int fd) {
     if (fd != -1) {
         anetNonBlock(NULL,fd);
         anetEnableTcpNoDelay(NULL,fd);
-        if (server.tcpkeepalive)
-            anetKeepAlive(NULL,fd,server.tcpkeepalive);
-        if (aeCreateFileEvent(server.el,fd,AE_READABLE,
+        if (tls_instance_state->server.tcpkeepalive)
+            anetKeepAlive(NULL,fd,tls_instance_state->server.tcpkeepalive);
+        if (aeCreateFileEvent(tls_instance_state->server.el,fd,AE_READABLE,
             readQueryFromClient, c) == AE_ERR)
         {
             close(fd);
@@ -79,7 +79,7 @@ redisClient *createClient(int fd) {
     }
 
     selectDb(c,0);
-    c->id = server.next_client_id++;
+    c->id = tls_instance_state->server.next_client_id++;
     c->fd = fd;
     c->name = NULL;
     c->bufpos = 0;
@@ -93,7 +93,7 @@ redisClient *createClient(int fd) {
     c->bulklen = -1;
     c->sentlen = 0;
     c->flags = 0;
-    c->ctime = c->lastinteraction = server.unixtime;
+    c->ctime = c->lastinteraction = tls_instance_state->server.unixtime;
     c->authenticated = 0;
     c->replstate = REDIS_REPL_NONE;
     c->repl_put_online_on_ack = 0;
@@ -115,7 +115,7 @@ redisClient *createClient(int fd) {
     c->peerid = NULL;
     listSetFreeMethod(c->pubsub_patterns,decrRefCountVoid);
     listSetMatchMethod(c->pubsub_patterns,listMatchObjects);
-    if (fd != -1) listAddNodeTail(server.clients,c);
+    if (fd != -1) listAddNodeTail(tls_instance_state->server.clients,c);
     initClientMultiState(c);
     return c;
 }
@@ -142,7 +142,7 @@ int prepareClientToWrite(redisClient *c) {
     if (c->bufpos == 0 && listLength(c->reply) == 0 &&
         (c->replstate == REDIS_REPL_NONE ||
          c->replstate == REDIS_REPL_ONLINE) && !c->repl_put_online_on_ack &&
-        aeCreateFileEvent(server.el, c->fd, AE_WRITABLE,
+        aeCreateFileEvent(tls_instance_state->server.el, c->fd, AE_WRITABLE,
         sendReplyToClient, c) == AE_ERR) return REDIS_ERR;
     return REDIS_OK;
 }
@@ -560,18 +560,18 @@ static void acceptCommonHandler(int fd, int flags) {
      * connection. Note that we create the client instead to check before
      * for this condition, since now the socket is already set in non-blocking
      * mode and we can send an error for free using the Kernel I/O */
-    if (listLength(server.clients) > (PORT_ULONG) server.maxclients) {
+    if (listLength(tls_instance_state->server.clients) > (PORT_ULONG) tls_instance_state->server.maxclients) {
         char *err = "-ERR max number of clients reached\r\n";
 
         /* That's a best effort error message, don't check write errors */
         if (write(c->fd,err,strlen(err)) == -1) {
             /* Nothing to do, Just to avoid the warning... */
         }
-        server.stat_rejected_conn++;
+        tls_instance_state->server.stat_rejected_conn++;
         freeClient(c);
         return;
     }
-    server.stat_numconnections++;
+    tls_instance_state->server.stat_numconnections++;
     c->flags |= flags;
 }
 
@@ -583,11 +583,11 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(privdata);
 
     while(max--) {
-        cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
+        cfd = anetTcpAccept(tls_instance_state->server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK) {
                 redisLog(REDIS_WARNING,
-                    "Accepting client connection: %s", server.neterr);
+                    "Accepting client connection: %s", tls_instance_state->server.neterr);
 #ifdef _WIN32
                 if (WSIOCP_QueueAccept(fd) == -1) {
                     redisLog(REDIS_WARNING,
@@ -609,14 +609,14 @@ void acceptUnixHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(privdata);
 
     while(max--) {
-        cfd = anetUnixAccept(server.neterr, fd);
+        cfd = anetUnixAccept(tls_instance_state->server.neterr, fd);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
                 redisLog(REDIS_WARNING,
-                    "Accepting client connection: %s", server.neterr);
+                    "Accepting client connection: %s", tls_instance_state->server.neterr);
             return;
         }
-        redisLog(REDIS_VERBOSE,"Accepted connection to %s", server.unixsocket);
+        redisLog(REDIS_VERBOSE,"Accepted connection to %s", tls_instance_state->server.unixsocket);
         acceptCommonHandler(cfd,REDIS_UNIX_SOCKET);
     }
 }
@@ -633,8 +633,8 @@ static void freeClientArgv(redisClient *c) {
  * when we resync with our own master and want to force all our slaves to
  * resync with us as well. */
 void disconnectSlaves(void) {
-    while (listLength(server.slaves)) {
-        listNode *ln = listFirst(server.slaves);
+    while (listLength(tls_instance_state->server.slaves)) {
+        listNode *ln = listFirst(tls_instance_state->server.slaves);
         freeClient((redisClient*)ln->value);
     }
 }
@@ -642,29 +642,29 @@ void disconnectSlaves(void) {
 /* This function is called when the slave lose the connection with the
  * master into an unexpected way. */
 void replicationHandleMasterDisconnection(void) {
-    server.master = NULL;
-    server.repl_state = REDIS_REPL_CONNECT;
-    server.repl_down_since = server.unixtime;
+    tls_instance_state->server.master = NULL;
+    tls_instance_state->server.repl_state = REDIS_REPL_CONNECT;
+    tls_instance_state->server.repl_down_since = tls_instance_state->server.unixtime;
     /* We lost connection with our master, force our slaves to resync
      * with us as well to load the new data set.
      *
-     * If server.masterhost is NULL the user called SLAVEOF NO ONE so
+     * If tls_instance_state->server.masterhost is NULL the user called SLAVEOF NO ONE so
      * slave resync is not needed. */
-    if (server.masterhost != NULL) disconnectSlaves();
+    if (tls_instance_state->server.masterhost != NULL) disconnectSlaves();
 }
 
 void freeClient(redisClient *c) {
     listNode *ln;
 
     /* If this is marked as current client unset it */
-    if (server.current_client == c) server.current_client = NULL;
+    if (tls_instance_state->server.current_client == c) tls_instance_state->server.current_client = NULL;
 
     /* If it is our master that's beging disconnected we should make sure
      * to cache the state to try a partial resynchronization later.
      *
      * Note that before doing this we make sure that the client is not in
      * some unexpected state, by checking its flags. */
-    if (server.master && c->flags & REDIS_MASTER) {
+    if (tls_instance_state->server.master && c->flags & REDIS_MASTER) {
         redisLog(REDIS_WARNING,"Connection with master lost.");
         if (!(c->flags & (REDIS_CLOSE_AFTER_REPLY|
                           REDIS_CLOSE_ASAP|
@@ -704,25 +704,25 @@ void freeClient(redisClient *c) {
     /* Close socket, unregister events, and remove list of replies and
      * accumulated arguments. */
     if (c->fd != -1) {
-        aeDeleteFileEvent(server.el,c->fd,AE_READABLE);
-        aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+        aeDeleteFileEvent(tls_instance_state->server.el,c->fd,AE_READABLE);
+        aeDeleteFileEvent(tls_instance_state->server.el,c->fd,AE_WRITABLE);
         close(c->fd);
     }
     listRelease(c->reply);
     freeClientArgv(c);
     /* Remove from the list of clients */
     if (c->fd != -1) {
-        ln = listSearchKey(server.clients,c);
+        ln = listSearchKey(tls_instance_state->server.clients,c);
         redisAssert(ln != NULL);
-        listDelNode(server.clients,ln);
+        listDelNode(tls_instance_state->server.clients,ln);
     }
 
     /* When client was just unblocked because of a blocking operation,
      * remove it from the list of unblocked clients. */
     if (c->flags & REDIS_UNBLOCKED) {
-        ln = listSearchKey(server.unblocked_clients,c);
+        ln = listSearchKey(tls_instance_state->server.unblocked_clients,c);
         redisAssert(ln != NULL);
-        listDelNode(server.unblocked_clients,ln);
+        listDelNode(tls_instance_state->server.unblocked_clients,ln);
     }
 
     /* Master/slave cleanup Case 1:
@@ -739,15 +739,15 @@ void freeClient(redisClient *c) {
             if (c->repldbfd != -1) close(c->repldbfd);
             if (c->replpreamble) sdsfree(c->replpreamble);
         }
-        l = (c->flags & REDIS_MONITOR) ? server.monitors : server.slaves;
+        l = (c->flags & REDIS_MONITOR) ? tls_instance_state->server.monitors : tls_instance_state->server.slaves;
         ln = listSearchKey(l,c);
         redisAssert(ln != NULL);
         listDelNode(l,ln);
         /* We need to remember the time when we started to have zero
          * attached slaves, as after some time we'll free the replication
          * backlog. */
-        if (c->flags & REDIS_SLAVE && listLength(server.slaves) == 0)
-            server.repl_no_slaves_since = server.unixtime;
+        if (c->flags & REDIS_SLAVE && listLength(tls_instance_state->server.slaves) == 0)
+            tls_instance_state->server.repl_no_slaves_since = tls_instance_state->server.unixtime;
         refreshGoodSlavesCount();
     }
 
@@ -758,9 +758,9 @@ void freeClient(redisClient *c) {
     /* If this client was scheduled for async freeing we need to remove it
      * from the queue. */
     if (c->flags & REDIS_CLOSE_ASAP) {
-        ln = listSearchKey(server.clients_to_close,c);
+        ln = listSearchKey(tls_instance_state->server.clients_to_close,c);
         redisAssert(ln != NULL);
-        listDelNode(server.clients_to_close,ln);
+        listDelNode(tls_instance_state->server.clients_to_close,ln);
     }
 
     /* Release other dynamically allocated client structure fields,
@@ -779,17 +779,17 @@ void freeClient(redisClient *c) {
 void freeClientAsync(redisClient *c) {
     if (c->flags & REDIS_CLOSE_ASAP || c->flags & REDIS_LUA_CLIENT) return;
     c->flags |= REDIS_CLOSE_ASAP;
-    listAddNodeTail(server.clients_to_close,c);
+    listAddNodeTail(tls_instance_state->server.clients_to_close,c);
 }
 
 void freeClientsInAsyncFreeQueue(void) {
-    while (listLength(server.clients_to_close)) {
-        listNode *ln = listFirst(server.clients_to_close);
+    while (listLength(tls_instance_state->server.clients_to_close)) {
+        listNode *ln = listFirst(tls_instance_state->server.clients_to_close);
         redisClient *c = listNodeValue(ln);
 
         c->flags &= ~REDIS_CLOSE_ASAP;
         freeClient(c);
-        listDelNode(server.clients_to_close,ln);
+        listDelNode(tls_instance_state->server.clients_to_close,ln);
     }
 }
 
@@ -807,7 +807,7 @@ void sendReplyBufferDone(aeEventLoop *el, int fd, void *privdata, int written) {
         c->sentlen = 0;
     }
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
-        aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+        aeDeleteFileEvent(tls_instance_state->server.el,c->fd,AE_WRITABLE);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) {
@@ -827,7 +827,7 @@ void sendReplyListDone(aeEventLoop *el, int fd, void *privdata, int written) {
 
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
         c->sentlen = 0;
-        aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+        aeDeleteFileEvent(tls_instance_state->server.el,c->fd,AE_WRITABLE);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY){
@@ -914,18 +914,18 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
          * However if we are over the maxmemory limit we ignore that and
          * just deliver as much data as it is possible to deliver. */
         if (totwritten > REDIS_MAX_WRITE_PER_EVENT &&
-            (server.maxmemory == 0 ||
-             zmalloc_used_memory() < server.maxmemory)) break;
+            (tls_instance_state->server.maxmemory == 0 ||
+             zmalloc_used_memory() < tls_instance_state->server.maxmemory)) break;
     }
 #ifndef _WIN32
-	if (totwritten > 0) c->lastinteraction = server.unixtime;
+	if (totwritten > 0) c->lastinteraction = tls_instance_state->server.unixtime;
 #else
     if (totwritten > 0) {
 		/* For clients representing masters we don't count sending data
 		* as an interaction, since we always send REPLCONF ACK commands
 		* that take some time to just fill the socket output buffer.
 		* We just rely on data / pings received for timeout detection. */
-		if (!(c->flags & REDIS_MASTER)) c->lastinteraction = server.unixtime;
+		if (!(c->flags & REDIS_MASTER)) c->lastinteraction = tls_instance_state->server.unixtime;
     }
 #endif
 
@@ -984,10 +984,10 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
          *
          * However if we are over the maxmemory limit we ignore that and
          * just deliver as much data as it is possible to deliver. */
-        server.stat_net_output_bytes += totwritten;
+        tls_instance_state->server.stat_net_output_bytes += totwritten;
         if (totwritten > REDIS_MAX_WRITE_PER_EVENT &&
-            (server.maxmemory == 0 ||
-             zmalloc_used_memory() < server.maxmemory)) break;
+            (tls_instance_state->server.maxmemory == 0 ||
+             zmalloc_used_memory() < tls_instance_state->server.maxmemory)) break;
     }
     if (nwritten == -1) {
         if (errno == EAGAIN) {
@@ -1004,11 +1004,11 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
          * as an interaction, since we always send REPLCONF ACK commands
          * that take some time to just fill the socket output buffer.
          * We just rely on data / pings received for timeout detection. */
-        if (!(c->flags & REDIS_MASTER)) c->lastinteraction = server.unixtime;
+        if (!(c->flags & REDIS_MASTER)) c->lastinteraction = tls_instance_state->server.unixtime;
     }
     if (c->bufpos == 0 && listLength(c->reply) == 0) {
         c->sentlen = 0;
-        aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
+        aeDeleteFileEvent(tls_instance_state->server.el,c->fd,AE_WRITABLE);
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) freeClient(c);
@@ -1063,7 +1063,7 @@ int processInlineBuffer(redisClient *c) {
      * This is useful for a slave to ping back while loading a big
      * RDB file. */
     if (querylen == 0 && c->flags & REDIS_SLAVE)
-        c->repl_ack_time = server.unixtime;
+        c->repl_ack_time = tls_instance_state->server.unixtime;
 
     /* Leave data after the first line of the query in the buffer */
     sdsrange(c->querybuf,(int)(querylen+2),-1);
@@ -1090,7 +1090,7 @@ int processInlineBuffer(redisClient *c) {
 /* Helper function. Trims query buffer to make the function that processes
  * multi bulk requests idempotent. */
 static void setProtocolError(redisClient *c, int pos) {
-    if (server.verbosity <= REDIS_VERBOSE) {
+    if (tls_instance_state->server.verbosity <= REDIS_VERBOSE) {
         sds client = catClientInfoString(sdsempty(),c);
         redisLog(REDIS_VERBOSE,
             "Protocol error from client: %s", client);
@@ -1284,7 +1284,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(mask);
 
-    server.current_client = c;
+    tls_instance_state->server.current_client = c;
     readlen = REDIS_IOBUF_LEN;
     /* If this is a multi bulk request, and we are processing a bulk reply
      * that is large enough, try to maximize the probability that the query
@@ -1322,14 +1322,14 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 #endif
     if (nread) {
         sdsIncrLen(c->querybuf,nread);
-        c->lastinteraction = server.unixtime;
+        c->lastinteraction = tls_instance_state->server.unixtime;
         if (c->flags & REDIS_MASTER) c->reploff += nread;
-        server.stat_net_input_bytes += nread;
+        tls_instance_state->server.stat_net_input_bytes += nread;
     } else {
-        server.current_client = NULL;
+        tls_instance_state->server.current_client = NULL;
         return;
     }
-    if (sdslen(c->querybuf) > server.client_max_querybuf_len) {
+    if (sdslen(c->querybuf) > tls_instance_state->server.client_max_querybuf_len) {
         sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
 
         bytes = sdscatrepr(bytes,c->querybuf,64);
@@ -1340,7 +1340,7 @@ void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
     processInputBuffer(c);
-    server.current_client = NULL;
+    tls_instance_state->server.current_client = NULL;
 }
 
 void getClientsMaxBuffers(PORT_ULONG *longest_output_list,
@@ -1350,7 +1350,7 @@ void getClientsMaxBuffers(PORT_ULONG *longest_output_list,
     listIter li;
     PORT_ULONG lol = 0,bib = 0;
 
-    listRewind(server.clients,&li);
+    listRewind(tls_instance_state->server.clients,&li);
     while ((ln = listNext(&li)) != NULL) {
         c = listNodeValue(ln);
 
@@ -1391,7 +1391,7 @@ int genClientPeerId(redisClient *client, char *peerid, size_t peerid_len) {
 
     if (client->flags & REDIS_UNIX_SOCKET) {
         /* Unix socket client. */
-        snprintf(peerid,peerid_len,"%s:0",server.unixsocket);
+        snprintf(peerid,peerid_len,"%s:0",tls_instance_state->server.unixsocket);
         return REDIS_OK;
     } else {
         /* TCP client. */
@@ -1448,7 +1448,7 @@ sds catClientInfoString(sds s, redisClient *client) {
     if (p == flags) *p++ = 'N';
     *p++ = '\0';
 
-    emask = client->fd == -1 ? 0 : aeGetFileEvents(server.el,client->fd);
+    emask = client->fd == -1 ? 0 : aeGetFileEvents(tls_instance_state->server.el,client->fd);
     p = events;
     if (emask & AE_READABLE) *p++ = 'r';
     if (emask & AE_WRITABLE) *p++ = 'w';
@@ -1459,8 +1459,8 @@ sds catClientInfoString(sds s, redisClient *client) {
         getClientPeerId(client),
         client->fd,
         client->name ? (char*)client->name->ptr : "",
-        (PORT_LONGLONG)(server.unixtime - client->ctime),
-        (PORT_LONGLONG)(server.unixtime - client->lastinteraction),
+        (PORT_LONGLONG)(tls_instance_state->server.unixtime - client->ctime),
+        (PORT_LONGLONG)(tls_instance_state->server.unixtime - client->lastinteraction),
         flags,
         client->db->id,
         (int) dictSize(client->pubsub_channels),
@@ -1481,8 +1481,8 @@ sds getAllClientsInfoString(void) {
     redisClient *client;
     sds o = sdsempty();
 
-    o = sdsMakeRoomFor(o,200*listLength(server.clients));
-    listRewind(server.clients,&li);
+    o = sdsMakeRoomFor(o,200*listLength(tls_instance_state->server.clients));
+    listRewind(tls_instance_state->server.clients,&li);
     while ((ln = listNext(&li)) != NULL) {
         client = listNodeValue(ln);
         o = catClientInfoString(o,client);
@@ -1557,7 +1557,7 @@ void clientCommand(redisClient *c) {
         }
 
         /* Iterate clients killing all the matching clients. */
-        listRewind(server.clients,&li);
+        listRewind(tls_instance_state->server.clients,&li);
         while ((ln = listNext(&li)) != NULL) {
             client = listNodeValue(ln);
             if (addr && strcmp(getClientPeerId(client),addr) != 0) continue;
@@ -1737,24 +1737,24 @@ int checkClientOutputBufferLimits(redisClient *c) {
     PORT_ULONG used_mem = getClientOutputBufferMemoryUsage(c);
 
     class = getClientType(c);
-    if (server.client_obuf_limits[class].hard_limit_bytes &&
-        used_mem >= server.client_obuf_limits[class].hard_limit_bytes)
+    if (tls_instance_state->server.client_obuf_limits[class].hard_limit_bytes &&
+        used_mem >= tls_instance_state->server.client_obuf_limits[class].hard_limit_bytes)
         hard = 1;
-    if (server.client_obuf_limits[class].soft_limit_bytes &&
-        used_mem >= server.client_obuf_limits[class].soft_limit_bytes)
+    if (tls_instance_state->server.client_obuf_limits[class].soft_limit_bytes &&
+        used_mem >= tls_instance_state->server.client_obuf_limits[class].soft_limit_bytes)
         soft = 1;
 
     /* We need to check if the soft limit is reached continuously for the
      * specified amount of seconds. */
     if (soft) {
         if (c->obuf_soft_limit_reached_time == 0) {
-            c->obuf_soft_limit_reached_time = server.unixtime;
+            c->obuf_soft_limit_reached_time = tls_instance_state->server.unixtime;
             soft = 0; /* First time we see the soft limit reached */
         } else {
-            time_t elapsed = server.unixtime - c->obuf_soft_limit_reached_time;
+            time_t elapsed = tls_instance_state->server.unixtime - c->obuf_soft_limit_reached_time;
 
             if (elapsed <=
-                server.client_obuf_limits[class].soft_limit_seconds) {
+                tls_instance_state->server.client_obuf_limits[class].soft_limit_seconds) {
                 soft = 0; /* The client still did not reached the max number of
                              seconds for the soft limit to be considered
                              reached. */
@@ -1791,17 +1791,17 @@ void flushSlavesOutputBuffers(void) {
     listIter li;
     listNode *ln;
 
-    listRewind(server.slaves,&li);
+    listRewind(tls_instance_state->server.slaves,&li);
     while((ln = listNext(&li))) {
         redisClient *slave = listNodeValue(ln);
         int events;
 
-        events = aeGetFileEvents(server.el,slave->fd);
+        events = aeGetFileEvents(tls_instance_state->server.el,slave->fd);
         if (events & AE_WRITABLE &&
             slave->replstate == REDIS_REPL_ONLINE &&
             listLength(slave->reply))
         {
-            sendReplyToClient(server.el,slave->fd,slave,0);
+            sendReplyToClient(tls_instance_state->server.el,slave->fd,slave,0);
         }
     }
 }
@@ -1822,7 +1822,7 @@ int processEventsWhileBlocked(void) {
     int iterations = 4; /* See the function top-comment. */
     int count = 0;
     while (iterations--) {
-        int events = aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
+        int events = aeProcessEvents(tls_instance_state->server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
         if (!events) break;
         count += events;
     }

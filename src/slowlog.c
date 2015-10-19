@@ -80,7 +80,7 @@ slowlogEntry *slowlogCreateEntry(robj **argv, int argc, PORT_LONGLONG duration) 
     }
     se->time = time(NULL);
     se->duration = duration;
-    se->id = server.slowlog_entry_id++;
+    se->id = tls_instance_state->server.slowlog_entry_id++;
     return se;
 }
 
@@ -101,28 +101,28 @@ void slowlogFreeEntry(void *septr) {
 /* Initialize the slow log. This function should be called a single time
  * at server startup. */
 void slowlogInit(void) {
-    server.slowlog = listCreate();
-    server.slowlog_entry_id = 0;
-    listSetFreeMethod(server.slowlog,slowlogFreeEntry);
+    tls_instance_state->server.slowlog = listCreate();
+    tls_instance_state->server.slowlog_entry_id = 0;
+    listSetFreeMethod(tls_instance_state->server.slowlog,slowlogFreeEntry);
 }
 
 /* Push a new entry into the slow log.
  * This function will make sure to trim the slow log accordingly to the
  * configured max length. */
 void slowlogPushEntryIfNeeded(robj **argv, int argc, PORT_LONGLONG duration) {
-    if (server.slowlog_log_slower_than < 0) return; /* Slowlog disabled */
-    if (duration >= server.slowlog_log_slower_than)
-        listAddNodeHead(server.slowlog,slowlogCreateEntry(argv,argc,duration));
+    if (tls_instance_state->server.slowlog_log_slower_than < 0) return; /* Slowlog disabled */
+    if (duration >= tls_instance_state->server.slowlog_log_slower_than)
+        listAddNodeHead(tls_instance_state->server.slowlog,slowlogCreateEntry(argv,argc,duration));
 
     /* Remove old entries if needed. */
-    while (listLength(server.slowlog) > server.slowlog_max_len)
-        listDelNode(server.slowlog,listLast(server.slowlog));
+    while (listLength(tls_instance_state->server.slowlog) > tls_instance_state->server.slowlog_max_len)
+        listDelNode(tls_instance_state->server.slowlog,listLast(tls_instance_state->server.slowlog));
 }
 
 /* Remove all the entries from the current slow log. */
 void slowlogReset(void) {
-    while (listLength(server.slowlog) > 0)
-        listDelNode(server.slowlog,listLast(server.slowlog));
+    while (listLength(tls_instance_state->server.slowlog) > 0)
+        listDelNode(tls_instance_state->server.slowlog,listLast(tls_instance_state->server.slowlog));
 }
 
 /* The SLOWLOG command. Implements all the subcommands needed to handle the
@@ -132,7 +132,7 @@ void slowlogCommand(redisClient *c) {
         slowlogReset();
         addReply(c,shared.ok);
     } else if (c->argc == 2 && !strcasecmp(c->argv[1]->ptr,"len")) {
-        addReplyLongLong(c,listLength(server.slowlog));
+        addReplyLongLong(c,listLength(tls_instance_state->server.slowlog));
     } else if ((c->argc == 2 || c->argc == 3) &&
                !strcasecmp(c->argv[1]->ptr,"get"))
     {
@@ -146,7 +146,7 @@ void slowlogCommand(redisClient *c) {
             getLongFromObjectOrReply(c,c->argv[2],&count,NULL) != REDIS_OK)
             return;
 
-        listRewind(server.slowlog,&li);
+        listRewind(tls_instance_state->server.slowlog,&li);
         totentries = addDeferredMultiBulkLength(c);
         while(count-- && (ln = listNext(&li))) {
             int j;

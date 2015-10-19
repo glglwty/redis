@@ -1202,8 +1202,8 @@ void zaddGenericCommand(redisClient *c, int incr) {
     /* Lookup the key and create the sorted set if does not exist. */
     zobj = lookupKeyWrite(c->db,key);
     if (zobj == NULL) {
-        if (server.zset_max_ziplist_entries == 0 ||
-            server.zset_max_ziplist_value < sdslen(c->argv[3]->ptr))
+        if (tls_instance_state->server.zset_max_ziplist_entries == 0 ||
+            tls_instance_state->server.zset_max_ziplist_value < sdslen(c->argv[3]->ptr))
         {
             zobj = createZsetObject();
         } else {
@@ -1238,18 +1238,18 @@ void zaddGenericCommand(redisClient *c, int incr) {
                 if (score != curscore) {
                     zobj->ptr = zzlDelete(zobj->ptr,eptr);
                     zobj->ptr = zzlInsert(zobj->ptr,ele,score);
-                    server.dirty++;
+                    tls_instance_state->server.dirty++;
                     updated++;
                 }
             } else {
                 /* Optimize: check if the element is too large or the list
                  * becomes too long *before* executing zzlInsert. */
                 zobj->ptr = zzlInsert(zobj->ptr,ele,score);
-                if (zzlLength(zobj->ptr) > server.zset_max_ziplist_entries)
+                if (zzlLength(zobj->ptr) > tls_instance_state->server.zset_max_ziplist_entries)
                     zsetConvert(zobj,REDIS_ENCODING_SKIPLIST);
-                if (sdslen(ele->ptr) > server.zset_max_ziplist_value)
+                if (sdslen(ele->ptr) > tls_instance_state->server.zset_max_ziplist_value)
                     zsetConvert(zobj,REDIS_ENCODING_SKIPLIST);
-                server.dirty++;
+                tls_instance_state->server.dirty++;
                 added++;
             }
         } else if (zobj->encoding == REDIS_ENCODING_SKIPLIST) {
@@ -1281,7 +1281,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
                     znode = zslInsert(zs->zsl,score,curobj);
                     incrRefCount(curobj); /* Re-inserted in skiplist. */
                     dictGetVal(de) = &znode->score; /* Update score ptr. */
-                    server.dirty++;
+                    tls_instance_state->server.dirty++;
                     updated++;
                 }
             } else {
@@ -1289,7 +1289,7 @@ void zaddGenericCommand(redisClient *c, int incr) {
                 incrRefCount(ele); /* Inserted in skiplist. */
                 redisAssertWithInfo(c,NULL,dictAdd(zs->dict,ele,&znode->score) == DICT_OK);
                 incrRefCount(ele); /* Added to dictionary. */
-                server.dirty++;
+                tls_instance_state->server.dirty++;
                 added++;
             }
         } else {
@@ -1373,7 +1373,7 @@ void zremCommand(redisClient *c) {
         if (keyremoved)
             notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",key,c->db->id);
         signalModifiedKey(c->db,key);
-        server.dirty += deleted;
+        tls_instance_state->server.dirty += deleted;
     }
     addReplyLongLong(c,deleted);
 }
@@ -1475,7 +1475,7 @@ void zremrangeGenericCommand(redisClient *c, int rangetype) {
         if (keyremoved)
             notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",key,c->db->id);
     }
-    server.dirty += deleted;
+    tls_instance_state->server.dirty += deleted;
     addReplyLongLong(c,deleted);
 
 cleanup:
@@ -2060,12 +2060,12 @@ void zunionInterGenericCommand(redisClient *c, robj *dstkey, int op) {
     if (dbDelete(c->db,dstkey)) {
         signalModifiedKey(c->db,dstkey);
         touched = 1;
-        server.dirty++;
+        tls_instance_state->server.dirty++;
     }
     if (dstzset->zsl->length) {
         /* Convert to ziplist when in limits. */
-        if (dstzset->zsl->length <= server.zset_max_ziplist_entries &&
-            maxelelen <= server.zset_max_ziplist_value)
+        if (dstzset->zsl->length <= tls_instance_state->server.zset_max_ziplist_entries &&
+            maxelelen <= tls_instance_state->server.zset_max_ziplist_value)
                 zsetConvert(dstobj,REDIS_ENCODING_ZIPLIST);
 
         dbAdd(c->db,dstkey,dstobj);
@@ -2074,7 +2074,7 @@ void zunionInterGenericCommand(redisClient *c, robj *dstkey, int op) {
         notifyKeyspaceEvent(REDIS_NOTIFY_ZSET,
             (op == REDIS_OP_UNION) ? "zunionstore" : "zinterstore",
             dstkey,c->db->id);
-        server.dirty++;
+        tls_instance_state->server.dirty++;
     } else {
         decrRefCount(dstobj);
         addReply(c,shared.czero);

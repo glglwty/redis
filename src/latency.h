@@ -68,7 +68,7 @@ int THPIsEnabled(void);
 /* Latency monitoring macros. */
 
 /* Start monitoring an event. We just set the current time. */
-#define latencyStartMonitor(var) if (server.latency_monitor_threshold) { \
+#define latencyStartMonitor(var) if (tls_instance_state->server.latency_monitor_threshold) { \
     var = mstime(); \
 } else { \
     var = 0; \
@@ -76,14 +76,14 @@ int THPIsEnabled(void);
 
 /* End monitoring an event, compute the difference with the current time
  * to check the amount of time elapsed. */
-#define latencyEndMonitor(var) if (server.latency_monitor_threshold) { \
+#define latencyEndMonitor(var) if (tls_instance_state->server.latency_monitor_threshold) { \
     var = mstime() - var; \
 }
 
 /* Add the sample only if the elapsed time is >= to the configured threshold. */
 #define latencyAddSampleIfNeeded(event,var) \
-    if (server.latency_monitor_threshold && \
-        (var) >= server.latency_monitor_threshold) \
+    if (tls_instance_state->server.latency_monitor_threshold && \
+        (var) >= tls_instance_state->server.latency_monitor_threshold) \
           latencyAddSample((event),(var));
 
 #endif /* __LATENCY_H */

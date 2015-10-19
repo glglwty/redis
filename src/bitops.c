@@ -241,7 +241,7 @@ void setbitCommand(redisClient *c) {
     ((uint8_t*)o->ptr)[byte] = byteval;
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"setbit",c->argv[1],c->db->id);
-    server.dirty++;
+    tls_instance_state->server.dirty++;
     addReply(c, bitval ? shared.cone : shared.czero);
 }
 
@@ -441,7 +441,7 @@ void bitopCommand(redisClient *c) {
         signalModifiedKey(c->db,targetkey);
         notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",targetkey,c->db->id);
     }
-    server.dirty++;
+    tls_instance_state->server.dirty++;
     addReplyLongLong(c,maxlen); /* Return the output string length in bytes. */
 }
 
