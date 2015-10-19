@@ -26,7 +26,7 @@
 void SetupGlobals(LPVOID globalData, size_t globalDataSize, uint32_t dictHashSeed)
 {
 #ifndef NO_QFORKIMPL
-    memcpy(&server, globalData, globalDataSize);
+    memcpy(&tls_instance_state->server, globalData, globalDataSize);
     dictSetHashFunctionSeed(dictHashSeed);
 #endif
 }
@@ -34,7 +34,7 @@ void SetupGlobals(LPVOID globalData, size_t globalDataSize, uint32_t dictHashSee
 int do_rdbSave(char* filename)
 {
 #ifndef NO_QFORKIMPL
-    server.rdb_child_pid = GetCurrentProcessId();
+    tls_instance_state->server.rdb_child_pid = GetCurrentProcessId();
     if( rdbSave(filename) != REDIS_OK ) {
         redisLog(REDIS_WARNING,"rdbSave failed in qfork: %s", strerror(errno));
         return REDIS_ERR;
@@ -48,7 +48,7 @@ int do_aofSave(char* filename)
 #ifndef NO_QFORKIMPL
     int rewriteAppendOnlyFile(char *filename);
 
-    server.aof_child_pid = GetCurrentProcessId();
+    tls_instance_state->server.aof_child_pid = GetCurrentProcessId();
     if( rewriteAppendOnlyFile(filename) != REDIS_OK ) {
         redisLog(REDIS_WARNING,"rewriteAppendOnlyFile failed in qfork: %s", strerror(errno));
         return REDIS_ERR;
@@ -67,7 +67,7 @@ int do_socketSave2(int *fds, int numfds, uint64_t *clientids)
     int retval;
     rio slave_sockets;
 
-    server.rdb_child_pid = GetCurrentProcessId();
+    tls_instance_state->server.rdb_child_pid = GetCurrentProcessId();
 
     rioInitWithFdset(&slave_sockets,fds,numfds);
     zfree(fds);
@@ -124,7 +124,7 @@ int do_socketSave2(int *fds, int numfds, uint64_t *clientids)
          * process with all the childre that were waiting. */
         msglen = sizeof(uint64_t)*(1+2*numfds);
         if (*len == 0 ||
-            write(server.rdb_pipe_write_result_to_parent,msg,msglen)
+            write(tls_instance_state->server.rdb_pipe_write_result_to_parent,msg,msglen)
             != msglen)
         {
             retval = REDIS_ERR;
@@ -137,6 +137,6 @@ int do_socketSave2(int *fds, int numfds, uint64_t *clientids)
 
 int do_socketSave(int *fds, int numfds, uint64_t *clientids, int pipe_write_fd)
 {
-    server.rdb_pipe_write_result_to_parent = pipe_write_fd;
+    tls_instance_state->server.rdb_pipe_write_result_to_parent = pipe_write_fd;
     return do_socketSave2(fds, numfds, clientids);
 }

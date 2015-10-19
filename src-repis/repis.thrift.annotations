@@ -1,0 +1,8 @@
+[service.rrdb]
+stateful = true
+
+[function.repis.read]
+write = false
+
+[function.repis.write]
+write = true

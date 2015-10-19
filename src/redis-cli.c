@@ -402,7 +402,7 @@ static int cliSelect() {
     return REDIS_ERR;
 }
 
-/* Connect to the server. If force is not zero the connection is performed
+/* Connect to the tls_instance_state->server. If force is not zero the connection is performed
  * even if there is already a connected socket. */
 static int cliConnect(int force) {
     if (context == NULL || force) {
@@ -904,7 +904,7 @@ static void usage(void) {
 "  -h <hostname>      Server hostname (default: 127.0.0.1).\n"
 "  -p <port>          Server port (default: 6379).\n"
 "  -s <socket>        Server socket (overrides hostname and port).\n"
-"  -a <password>      Password to use when connecting to the server.\n"
+"  -a <password>      Password to use when connecting to the tls_instance_state->server.\n"
 "  -r <repeat>        Execute specified command N times.\n"
 "  -i <interval>      When -r is used, waits <interval> seconds per command.\n"
 "                     It is possible to specify sub-second times like -i 0.1.\n"
@@ -925,7 +925,7 @@ static void usage(void) {
 "  --lru-test <keys>  Simulate a cache workload with an 80-20 distribution.\n"
 "  --slave            Simulate a slave showing commands received from the master.\n"
 "  --rdb <filename>   Transfer an RDB dump from remote server to local file.\n"
-"  --pipe             Transfer raw Redis protocol from stdin to server.\n"
+"  --pipe             Transfer raw Redis protocol from stdin to tls_instance_state->server.\n"
 "  --pipe-timeout <n> In --pipe mode, abort with error if after sending all data.\n"
 "                     no reply is received within <n> seconds.\n"
 "                     Default timeout: %d. Use 0 to wait forever.\n"
@@ -1380,7 +1380,7 @@ static void slaveMode(void) {
  *--------------------------------------------------------------------------- */
 
 /* This function implements --rdb, so it uses the replication protocol in order
- * to fetch the RDB file from a remote server. */
+ * to fetch the RDB file from a remote tls_instance_state->server. */
 static void getRDB(void) {
     int s = context->fd;
     int fd;
@@ -1462,7 +1462,7 @@ static void pipeMode(void) {
         if (!eof || obuf_len != 0) mask |= AE_WRITABLE;
         mask = aeWait(fd,mask,1000);
 
-        /* Handle the readable state: we can read replies from the server. */
+        /* Handle the readable state: we can read replies from the tls_instance_state->server. */
         if (mask & AE_READABLE) {
             ssize_t nread;
 
@@ -1494,9 +1494,9 @@ static void pipeMode(void) {
                                       reply->len == 20) {
                         /* Check if this is the reply to our final ECHO
                          * command. If so everything was received
-                         * from the server. */
+                         * from the tls_instance_state->server. */
                         if (memcmp(reply->str,magic,20) == 0) {
-                            printf("Last reply received from server.\n");
+                            printf("Last reply received from tls_instance_state->server.\n");
                             done = 1;
                             replies--;
                         }
@@ -1507,10 +1507,10 @@ static void pipeMode(void) {
             } while(reply);
         }
 
-        /* Handle the writable state: we can send protocol to the server. */
+        /* Handle the writable state: we can send protocol to the tls_instance_state->server. */
         if (mask & AE_WRITABLE) {
             while(1) {
-                /* Transfer current buffer to server. */
+                /* Transfer current buffer to tls_instance_state->server. */
                 if (obuf_len != 0) {
                     ssize_t nwritten = write(fd,obuf+obuf_pos,(unsigned int)obuf_len);
 
@@ -1543,7 +1543,7 @@ static void pipeMode(void) {
                         eof = 1;
                         /* Everything transferred, so we queue a special
                          * ECHO command that we can match in the replies
-                         * to make sure everything was read from the server. */
+                         * to make sure everything was read from the tls_instance_state->server. */
                         for (j = 0; j < 20; j++)
                             magic[j] = rand() & 0xff;
                         memcpy(echo+21,magic,20);
