@@ -1301,7 +1301,7 @@ extern "C"
     // The CRT will call this replacement main() before the previous main()
     // is invoked so that the QFork allocator can be setup prior to anything 
     // Redis will allocate.
-    int main(int argc, char* argv[]) {
+    int redis_qfork_main(int argc, char* argv[]) {
         try {
             InitTimeFunctions();
             ParseCommandLineArguments(argc, argv);

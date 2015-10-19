@@ -66,6 +66,7 @@
 #include "win32_Interop/win32fixes.h"
 #include "Win32_Interop/Win32_ThreadControl.h"
 #endif
+#include <assert.h>
 
 static pthread_t bio_threads[REDIS_BIO_NUM_OPS];
 static pthread_mutex_t bio_mutex[REDIS_BIO_NUM_OPS];
@@ -96,6 +97,11 @@ void *bioProcessBackgroundJobs(void *arg);
 
 /* Initialize the background system, spawning the thread. */
 void bioInit(void) {
+
+	//XXX by Tianyi: Fuck this silly function!
+	assert(0);
+	
+	
     pthread_attr_t attr;
     pthread_t thread;
     size_t stacksize;
@@ -130,6 +136,11 @@ void bioInit(void) {
 }
 
 void bioCreateBackgroundJob(int type, void *arg1, void *arg2, void *arg3) {
+	
+	//XXX by Tianyi: Fuck this silly function!
+	assert(0);
+
+
     struct bio_job *job = zmalloc(sizeof(*job));
 
     job->time = time(NULL);
@@ -144,6 +155,10 @@ void bioCreateBackgroundJob(int type, void *arg1, void *arg2, void *arg3) {
 }
 
 void *bioProcessBackgroundJobs(void *arg) {
+
+	//XXX by Tianyi: Fuck this silly function!
+	assert(0);
+
     struct bio_job *job;
     PORT_ULONG type = (PORT_ULONG)arg;
     sigset_t sigset;
@@ -207,6 +222,10 @@ void *bioProcessBackgroundJobs(void *arg) {
 
 /* Return the number of pending jobs of the specified type. */
 PORT_ULONGLONG bioPendingJobsOfType(int type) {
+
+	//XXX by Tianyi: Fuck this silly function!
+	assert(0);
+
     PORT_ULONGLONG val;
     pthread_mutex_lock(&bio_mutex[type]);
     val = bio_pending[type];
@@ -219,6 +238,10 @@ PORT_ULONGLONG bioPendingJobsOfType(int type) {
  * Currently Redis does this only on crash (for instance on SIGSEGV) in order
  * to perform a fast memory check without other threads messing with memory. */
 void bioKillThreads(void) {
+
+	//XXX by Tianyi: Fuck this silly function!
+	assert(0);
+
 #ifndef _WIN32
     int err, j;
 

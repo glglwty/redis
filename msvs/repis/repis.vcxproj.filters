@@ -1,0 +1,48 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.server.impl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.app.example.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.check.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.client.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.client.perf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.code.definition.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.server.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.server.impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4BF89389-A7A8-3A4F-819B-87310FB0F422}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{2B3B1A5E-C19C-371A-8FFE-7E6B106391A9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

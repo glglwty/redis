@@ -948,10 +948,9 @@ typedef struct
 	struct redisServer server;
 } instance_state_t;
 
-__declspec(thread) instance_state_t *tls_instance_state;
+extern __declspec(thread) instance_state_t *tls_instance_state;
 
 
-extern __declspec(thread) struct redisServer server;
 extern struct sharedObjectsStruct shared;
 extern dictType setDictType;
 extern dictType zsetDictType;

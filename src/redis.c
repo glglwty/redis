@@ -63,6 +63,9 @@
 #include <locale.h>
 #endif
 
+#include "libredis.h"
+#include <malloc.h>
+
 /* Our shared "common" objects */
 
 struct sharedObjectsStruct shared;
@@ -76,7 +79,7 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
 /*================================= Globals ================================= */
 
 /* Global vars */
-__declspec(thread) struct redisServer server; /* server global state */
+__declspec(thread) instance_state_t *tls_instance_state; /* server global state */
 
 /* Our command table.
  *
@@ -1841,7 +1844,8 @@ void initServer(void) {
     scriptingInit();
     slowlogInit();
     latencyMonitorInit();
-    bioInit();
+	//XXX by Tianyi: Fuck this silly function!
+    //bioInit();
 }
 
 /* Populates the Redis Command Table starting from the hard coded list
@@ -3539,7 +3543,157 @@ char *libredis_write(char* cmdbuf)
 	
 }
 
-void *libredis_new_instance()
+void *libredis_new_instance(int argc, char **argv)
 {
 	
+
+	//init malloc
+
+
+	g_malloc = malloc;
+	g_calloc = calloc;
+	g_realloc = realloc;
+	g_free = free;
+	g_msize = _msize;
+	//init server
+	instance_state_t *instance = tls_instance_state = (instance_state_t*)malloc(sizeof(instance_state_t));
+
+	memset(tls_instance_state, 0, sizeof(instance_state_t));
+
+	
+	//init
+
+	
+	struct timeval tv;
+
+	/* We need to initialize our libraries, and the server configuration. */
+#ifdef INIT_SETPROCTITLE_REPLACEMENT
+	spt_init(argc, argv);
+#endif
+	setlocale(LC_COLLATE, "");
+	zmalloc_enable_thread_safeness();
+	zmalloc_set_oom_handler(redisOutOfMemoryHandler);
+	srand((unsigned int)time(NULL) ^ getpid());
+	gettimeofday(&tv, NULL);
+	dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
+	tls_instance_state->server.sentinel_mode = checkForSentinelMode(argc, argv);
+	initServerConfig();
+
+	/* We need to init sentinel right now as parsing the configuration file
+	* in sentinel mode will have the effect of populating the sentinel
+	* data structures with master nodes to monitor. */
+	if (tls_instance_state->server.sentinel_mode) {
+		initSentinelConfig();
+		initSentinel();
+	}
+
+	if (argc >= 2) {
+		int j = 1; /* First option to parse in argv[] */
+		sds options = sdsempty();
+		char *configfile = NULL;
+
+		/* Handle special options --help and --version */
+		if (strcmp(argv[1], "-v") == 0 ||
+			strcmp(argv[1], "--version") == 0) version();
+		if (strcmp(argv[1], "--help") == 0 ||
+			strcmp(argv[1], "-h") == 0) usage();
+		if (strcmp(argv[1], "--test-memory") == 0) {
+			if (argc == 3) {
+				memtest(atoi(argv[2]), IF_WIN32(5, 50));
+				exit(0);
+			}
+			else {
+				fprintf(stderr, "Please specify the amount of memory to test in megabytes.\n");
+				fprintf(stderr, "Example: ./redis-server --test-memory 4096\n\n");
+				exit(1);
+			}
+		}
+
+		/* First argument is the config file name? */
+		if (argv[j][0] != '-' || argv[j][1] != '-')
+			configfile = argv[j++];
+		/* All the other options are parsed and conceptually appended to the
+		* configuration file. For instance --port 6380 will generate the
+		* string "port 6380\n" to be parsed after the actual file name
+		* is parsed, if any. */
+		while (j != argc) {
+			if (argv[j][0] == '-' && argv[j][1] == '-') {
+				/* Option name */
+				if (sdslen(options)) options = sdscat(options, "\n");
+				options = sdscat(options, argv[j] + 2);
+				options = sdscat(options, " ");
+			}
+			else {
+				/* Option argument */
+				options = sdscatrepr(options, argv[j], strlen(argv[j]));
+				options = sdscat(options, " ");
+			}
+			j++;
+		}
+		if (tls_instance_state->server.sentinel_mode && configfile && *configfile == '-') {
+			redisLog(REDIS_WARNING,
+				"Sentinel config from STDIN not allowed.");
+			redisLog(REDIS_WARNING,
+				"Sentinel needs config file on disk to save state.  Exiting...");
+			exit(1);
+		}
+		if (configfile) tls_instance_state->server.configfile = getAbsolutePath(configfile);
+		resetServerSaveParams();
+		loadServerConfig(configfile, options);
+		sdsfree(options);
+	}
+	else {
+		redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], tls_instance_state->server.sentinel_mode ? "sentinel" : "redis");
+	}
+
+
+
+	if (tls_instance_state->server.daemonize) daemonize();
+	
+	initServer();
+	
+	if (tls_instance_state->server.daemonize) createPidFile();
+	//redisSetProcTitle(argv[0]);
+	//redisAsciiArt();
+
+	
+	assert(!tls_instance_state->server.sentinel_mode);
+
+	
+
+	if (!tls_instance_state->server.sentinel_mode) {
+		/* Things not needed when running in Sentinel mode. */
+		redisLog(REDIS_WARNING, "Server started, Redis version " REDIS_VERSION);
+#ifdef __linux__
+		linuxMemoryWarnings();
+#endif
+		checkTcpBacklogSettings();
+		loadDataFromDisk();
+		if (tls_instance_state->server.ipfd_count > 0)
+			redisLog(REDIS_NOTICE, "The server is now ready to accept connections on port %d", tls_instance_state->server.port);
+		if (tls_instance_state->server.sofd > 0)
+			redisLog(REDIS_NOTICE, "The server is now ready to accept connections at %s", tls_instance_state->server.unixsocket);
+	}
+	else {
+		sentinelIsRunning();
+	}
+
+	
+	/* Warning the user about suspicious maxmemory setting. */
+	if (tls_instance_state->server.maxmemory > 0 && tls_instance_state->server.maxmemory < 1024 * 1024) {
+		redisLog(REDIS_WARNING, "WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", tls_instance_state->server.maxmemory);
+	}
+
+	//aeSetBeforeSleepProc(tls_instance_state->server.el, beforeSleep);
+	//aeMain(tls_instance_state->server.el);
+	//aeDeleteEventLoop(tls_instance_state->server.el);
+
+
+	//
+	return (void*)instance;
+}
+
+void libredis_set_instance(void*pinst)
+{
+	tls_instance_state = (instance_state_t*)pinst;
 }
