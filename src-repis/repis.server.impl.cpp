@@ -25,12 +25,14 @@ namespace dsn {
 		void repis_service_impl::on_read(const ::dsn::blob& request, ::dsn::rpc_replier<::dsn::blob>& reply)
 		{
 			libredis_set_instance(libredis_instance);
+			reply(::dsn::blob("fuck off", 0, 8));
 		}
 
 		void repis_service_impl::on_write(const ::dsn::blob& request, ::dsn::rpc_replier<::dsn::blob>& reply)
 		{
 			libredis_set_instance(libredis_instance);
 			++_last_committed_decree;
+			reply(::dsn::blob("fuck off", 0, 8));
 		}
 
 		int  repis_service_impl::open(bool create_new)

@@ -1735,14 +1735,17 @@ void initServer(void) {
     tls_instance_state->server.el = aeCreateEventLoop(tls_instance_state->server.maxclients+REDIS_EVENTLOOP_FDSET_INCR);
     tls_instance_state->server.db = zmalloc(sizeof(redisDb)*tls_instance_state->server.dbnum);
 
+	
     /* Open the TCP listening socket for the user commands. */
+	/*
     if (tls_instance_state->server.port != 0 &&
         listenToPort(tls_instance_state->server.port,tls_instance_state->server.ipfd,&tls_instance_state->server.ipfd_count) == REDIS_ERR)
         exit(1);
-
+	*/
     /* Open the listening Unix domain socket. */
+	/*
     if (tls_instance_state->server.unixsocket != NULL) {
-        unlink(tls_instance_state->server.unixsocket); /* don't care if this fails */
+        unlink(tls_instance_state->server.unixsocket); 
         tls_instance_state->server.sofd = anetUnixServer(tls_instance_state->server.neterr,tls_instance_state->server.unixsocket,
             tls_instance_state->server.unixsocketperm, tls_instance_state->server.tcp_backlog);
         if (tls_instance_state->server.sofd == ANET_ERR) {
@@ -1751,13 +1754,16 @@ void initServer(void) {
         }
         anetNonBlock(NULL,tls_instance_state->server.sofd);
     }
-
+	*/
+	
     /* Abort if there are no listening sockets at all. */
+	/*
     if (tls_instance_state->server.ipfd_count == 0 && tls_instance_state->server.sofd < 0) {
         redisLog(REDIS_WARNING, "Configured to not listen anywhere, exiting.");
         exit(1);
     }
-
+	*/
+	
     /* Create the Redis databases, and initialize other internal state. */
     for (j = 0; j < tls_instance_state->server.dbnum; j++) {
         tls_instance_state->server.db[j].dict = dictCreate(&dbDictType,NULL);
@@ -1794,15 +1800,20 @@ void initServer(void) {
     tls_instance_state->server.repl_good_slaves_count = 0;
     updateCachedTime();
 
+	
+
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
+	/*
     if(aeCreateTimeEvent(tls_instance_state->server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         redisPanic("Can't create the serverCron time event.");
         exit(1);
     }
+	*/
 
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
+	/*
     for (j = 0; j < tls_instance_state->server.ipfd_count; j++) {
         if (aeCreateFileEvent(tls_instance_state->server.el, tls_instance_state->server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)
@@ -1811,10 +1822,13 @@ void initServer(void) {
                     "Unrecoverable error creating tls_instance_state->server.ipfd file event.");
             }
     }
+	*/
+	/*
     if (tls_instance_state->server.sofd > 0 && aeCreateFileEvent(tls_instance_state->server.el,tls_instance_state->server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) redisPanic("Unrecoverable error creating tls_instance_state->server.sofd file event.");
-
+	*/
     /* Open the AOF file if needed. */
+	/*
     if (tls_instance_state->server.aof_state == REDIS_AOF_ON) {
 #ifdef _WIN32
         tls_instance_state->server.aof_fd = open(tls_instance_state->server.aof_filename,
@@ -1830,6 +1844,7 @@ void initServer(void) {
         }
     }
 
+	*/
     /* 32 bit instances are limited to 4GB of address space, so if there is
      * no explicit limit in the user provided configuration we set a limit
      * at 3 GB using maxmemory with 'noeviction' policy'. This avoids
