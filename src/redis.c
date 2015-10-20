@@ -2115,6 +2115,7 @@ int processCommand(redisClient *c) {
         return REDIS_ERR;
     }
 
+	
     /* Now lookup the command and check ASAP about trivial error conditions
      * such as wrong arity, bad command name and so forth. */
     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
@@ -3547,17 +3548,6 @@ int main(int argc, char **argv) {
 /* The End */
 
 
-
-char *libredis_read(char *cmdbuf)
-{
-	
-}
-
-char *libredis_write(char* cmdbuf)
-{
-	
-}
-
 void *libredis_new_instance(int argc, char **argv)
 {
 	
@@ -3703,6 +3693,9 @@ void *libredis_new_instance(int argc, char **argv)
 	//aeMain(tls_instance_state->server.el);
 	//aeDeleteEventLoop(tls_instance_state->server.el);
 
+	//create client
+	tls_instance_state->pclient = createClient(-1);
+
 
 	//
 	return (void*)instance;
@@ -3711,4 +3704,40 @@ void *libredis_new_instance(int argc, char **argv)
 void libredis_set_instance(void*pinst)
 {
 	tls_instance_state = (instance_state_t*)pinst;
+
+}
+
+reply_t libredis_call(const char *cmdbuf, int len)
+{
+	redisClient *c = tls_instance_state->server.lua_client;
+	sdsclear(c->querybuf);
+	c->querybuf = sdscatlen(c->querybuf, (void*)cmdbuf, len);
+	//printf("querybuf: %s\n", c->querybuf);
+	processInputBuffer(c);
+
+	sds reply;
+	reply = sdsnewlen(c->buf, c->bufpos);
+	c->bufpos = 0;
+	while (listLength(c->reply)) {
+		robj *o = listNodeValue(listFirst(c->reply));
+
+		reply = sdscatlen(reply, o->ptr, sdslen(o->ptr));
+		listDelNode(c->reply, listFirst(c->reply));
+	}
+	reply_t result;
+
+	//printf("reply....%s len = %d\n", reply, sdslen(reply));
+	c->reply_bytes = 0;
+
+
+	result.buf = reply;
+	result.len = sdslen(reply);
+	return result;
+}
+
+
+
+void libredis_drop_reply(reply_t *reply)
+{
+	sdsfree(reply->buf);
 }

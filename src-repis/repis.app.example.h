@@ -3,6 +3,8 @@
 # include "repis.client.perf.h"
 # include "repis.server.h"
 
+#include "protocol.h"
+
 namespace dsn { namespace apps { 
 // client app example
 class repis_client_app : 
@@ -48,25 +50,85 @@ public:
     {
         // test for service 'repis'
         {
-            ::dsn::blob req;
+			auto message = build_command({ "set", "foo", "bar" });
+			::dsn::blob req(message.c_str(), 0,  message.length());
             //sync:
             ::dsn::blob resp;
-            auto err = _repis_client->read(req, resp);
-            std::cout << "call RPC_REPIS_REPIS_READ end, return " << err.to_string() << std::endl;
+            auto err = _repis_client->write(req, resp);
+			std::cout << "call RPC_REPIS_REPIS_READ end, return length = " << resp.length() << " content = ";
+			for (int i = 0; i < resp.length(); i++)
+			{
+				std::cout << resp.buffer_ptr()[i];
+			}
+			std::cout << " err = " << err.to_string() << std::endl;
             //async: 
             //_repis_client->begin_read(req);
            
         }
         {
-            ::dsn::blob req;
+
+			auto message = build_command({ "get", "aaa" });
+			::dsn::blob req(message.c_str(), 0, message.length());
             //sync:
             ::dsn::blob resp;
-            auto err = _repis_client->write(req, resp);
-            std::cout << "call RPC_REPIS_REPIS_WRITE end, return " << err.to_string() << std::endl;
+            auto err = _repis_client->read(req, resp);
+			std::cout << "call RPC_REPIS_REPIS_WRITE end, return length = " << resp.length() << " content = ";
+			for (int i = 0; i < resp.length(); i++)
+			{
+				std::cout << resp.buffer_ptr()[i];
+			}
+			std::cout << " err = " << err.to_string() << std::endl;
             //async: 
-            //_repis_client->begin_write(req);
-           
+            //_repis_client->begin_write(req);   
         }
+		{
+			auto message = build_command({ "lpush", "bar", "1" });
+			::dsn::blob req(message.c_str(), 0, message.length());
+			//sync:
+			::dsn::blob resp;
+			auto err = _repis_client->write(req, resp);
+			std::cout << "call RPC_REPIS_REPIS_READ end, return length = " << resp.length() << " content = ";
+			for (int i = 0; i < resp.length(); i++)
+			{
+				std::cout << resp.buffer_ptr()[i];
+			}
+			std::cout << " err = " << err.to_string() << std::endl;
+			//async: 
+			//_repis_client->begin_read(req);
+		}
+
+		{
+			auto message = build_command({ "lpush", "bar", "2" });
+			::dsn::blob req(message.c_str(), 0, message.length());
+			//sync:
+			::dsn::blob resp;
+			auto err = _repis_client->write(req, resp);
+			std::cout << "call RPC_REPIS_REPIS_READ end, return length = " << resp.length() << " content = ";
+			for (int i = 0; i < resp.length(); i++)
+			{
+				std::cout << resp.buffer_ptr()[i];
+			}
+			std::cout << " err = " << err.to_string() << std::endl;
+			//async: 
+			//_repis_client->begin_read(req);
+		}
+
+		{
+
+			auto message = build_command({ "lrange", "bar", "0", "-1" });
+			::dsn::blob req(message.c_str(), 0, message.length());
+			//sync:
+			::dsn::blob resp;
+			auto err = _repis_client->read(req, resp);
+			std::cout << "call RPC_REPIS_REPIS_WRITE end, return length = " << resp.length() << " content = ";
+			for (int i = 0; i < resp.length(); i++)
+			{
+				std::cout << resp.buffer_ptr()[i];
+			}
+			std::cout << " err = " << err.to_string() << std::endl;
+			//async: 
+			//_repis_client->begin_write(req);   
+		}
     }
 
 private:

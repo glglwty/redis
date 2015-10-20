@@ -946,6 +946,7 @@ typedef struct {
 typedef struct
 {
 	struct redisServer server;
+	struct redisClient* pclient;
 } instance_state_t;
 
 extern __declspec(thread) instance_state_t *tls_instance_state;

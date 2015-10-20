@@ -375,6 +375,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\src-repis\protocol.h" />
     <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.app.example.h" />
     <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.check.h" />
     <ClInclude Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.client.h" />
