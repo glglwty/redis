@@ -104,10 +104,12 @@ public:
 			::dsn::blob resp;
 			auto err = _repis_client->write(req, resp);
 			std::cout << "call RPC_REPIS_REPIS_READ end, return length = " << resp.length() << " content = ";
+			/*
 			for (int i = 0; i < resp.length(); i++)
 			{
 				std::cout << resp.buffer_ptr()[i];
 			}
+			*/
 			std::cout << " err = " << err.to_string() << std::endl;
 			//async: 
 			//_repis_client->begin_read(req);
@@ -121,10 +123,12 @@ public:
 			::dsn::blob resp;
 			auto err = _repis_client->read(req, resp);
 			std::cout << "call RPC_REPIS_REPIS_WRITE end, return length = " << resp.length() << " content = ";
+			/*
 			for (int i = 0; i < resp.length(); i++)
 			{
 				std::cout << resp.buffer_ptr()[i];
 			}
+			*/
 			std::cout << " err = " << err.to_string() << std::endl;
 			//async: 
 			//_repis_client->begin_write(req);   

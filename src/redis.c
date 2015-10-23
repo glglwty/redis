@@ -1695,9 +1695,9 @@ void initServer(void) {
     HMODULE lib;
 #endif
 
-    signal(SIGHUP, SIG_IGN);
-    signal(SIGPIPE, SIG_IGN);
-    setupSignalHandlers();
+    //signal(SIGHUP, SIG_IGN);
+    //signal(SIGPIPE, SIG_IGN);
+    //setupSignalHandlers();
 
 #ifndef _WIN32
     if (tls_instance_state->server.syslog_enabled) {
@@ -3550,11 +3550,8 @@ int main(int argc, char **argv) {
 
 void *libredis_new_instance(int argc, char **argv)
 {
-	
 
 	//init malloc
-
-
 	g_malloc = malloc;
 	g_calloc = calloc;
 	g_realloc = realloc;
@@ -3562,13 +3559,9 @@ void *libredis_new_instance(int argc, char **argv)
 	g_msize = _msize;
 	//init server
 	instance_state_t *instance = tls_instance_state = (instance_state_t*)malloc(sizeof(instance_state_t));
-
 	memset(tls_instance_state, 0, sizeof(instance_state_t));
 
-	
 	//init
-
-	
 	struct timeval tv;
 
 	/* We need to initialize our libraries, and the server configuration. */
@@ -3643,6 +3636,7 @@ void *libredis_new_instance(int argc, char **argv)
 			exit(1);
 		}
 		if (configfile) tls_instance_state->server.configfile = getAbsolutePath(configfile);
+
 		resetServerSaveParams();
 		loadServerConfig(configfile, options);
 		sdsfree(options);
@@ -3734,8 +3728,6 @@ reply_t libredis_call(const char *cmdbuf, int len)
 	result.len = sdslen(reply);
 	return result;
 }
-
-
 
 void libredis_drop_reply(reply_t *reply)
 {

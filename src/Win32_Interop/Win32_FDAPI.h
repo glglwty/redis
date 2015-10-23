@@ -247,17 +247,24 @@ void   FDAPI_SetCloseSocketState(fnWSIOCP_CloseSocketStateRFD* func);
 BOOL ParseStorageAddress(const char *ip, int port, SOCKADDR_STORAGE* pSotrageAddr);
 
 // Macroize CRT definitions to point to our own
+/*
 #ifndef FDAPI_NOCRTREDEFS
 #define close(fd) fdapi_close(fd)
 #define setmode(fd,mode) fdapi_setmode(fd,mode)
 #define fwrite(Str, Size, Count, File) fdapi_fwrite(Str,Size,Count,File)
 #define fclose(File) fdapi_fclose(File)
 #define fileno(File) fdapi_fileno(File)
-#define _get_osfhandle(fd) fdapi_get_osfhandle(fd)
+*/
+static int _get_osfhandle(int fd)
+{
+	return fd;
+}
 
+/*
 #define _INC_STAT_INL
 #define fstat(_Desc, _Stat) fdapi_fstat64(_Desc,_Stat)
 #endif
+*/
 
 #ifdef __cplusplus
 }

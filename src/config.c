@@ -577,6 +577,7 @@ void loadServerConfigFromString(char *config) {
         sdsfreesplitres(argv,argc);
     }
     sdsfreesplitres(lines,totlines);
+
     return;
 
 loaderr:

@@ -762,6 +762,7 @@ int rdbSave(char *filename) {
         goto werr;
     }
 
+
     /* Make sure data will not remain on the OS's output buffers */
     if (fflush(fp) == EOF) goto werr;
     if (fsync(fileno(fp)) == -1) goto werr;
