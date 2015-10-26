@@ -3548,7 +3548,7 @@ int main(int argc, char **argv) {
 /* The End */
 
 
-void *libredis_new_instance(int argc, char **argv)
+void *libredis_new_instance(const char* load_filename, int argc, char **argv)
 {
 
 	//init malloc
@@ -3667,7 +3667,17 @@ void *libredis_new_instance(int argc, char **argv)
 		linuxMemoryWarnings();
 #endif
 		checkTcpBacklogSettings();
-		loadDataFromDisk();
+		//loadDataFromDisk();
+
+		if (load_filename != NULL)
+		{
+			if (rdbLoad((char*)load_filename) != REDIS_OK) {
+				return NULL;
+			}
+		}
+		
+
+
 		if (tls_instance_state->server.ipfd_count > 0)
 			redisLog(REDIS_NOTICE, "The server is now ready to accept connections on port %d", tls_instance_state->server.port);
 		if (tls_instance_state->server.sofd > 0)
@@ -3732,4 +3742,9 @@ reply_t libredis_call(const char *cmdbuf, int len)
 void libredis_drop_reply(reply_t *reply)
 {
 	sdsfree(reply->buf);
+}
+
+int libredis_save(const char* filename)
+{
+	return rdbSave((char*)filename) == REDIS_OK ? 0 : -1;
 }
