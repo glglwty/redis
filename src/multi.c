@@ -106,7 +106,7 @@ void discardCommand(redisClient *c) {
 void execCommandPropagateMulti(redisClient *c) {
     robj *multistring = createStringObject("MULTI",5);
 
-    propagate(tls_instance_state->server.multiCommand,c->db->id,&multistring,1,
+    propagate(server.multiCommand,c->db->id,&multistring,1,
               REDIS_PROPAGATE_AOF|REDIS_PROPAGATE_REPL);
     decrRefCount(multistring);
 }
@@ -169,7 +169,7 @@ void execCommand(redisClient *c) {
     discardTransaction(c);
     /* Make sure the EXEC command will be propagated as well if MULTI
      * was already propagated. */
-    if (must_propagate) tls_instance_state->server.dirty++;
+    if (must_propagate) server.dirty++;
 
 handle_monitor:
     /* Send EXEC to clients waiting data from MONITOR. We do it here
@@ -177,8 +177,8 @@ handle_monitor:
      * MUTLI, EXEC, ... commands inside transaction ...
      * Instead EXEC is flagged as REDIS_CMD_SKIP_MONITOR in the command
      * table, and we do it here with correct ordering. */
-    if (listLength(tls_instance_state->server.monitors) && !tls_instance_state->server.loading)
-        replicationFeedMonitors(c,tls_instance_state->server.monitors,c->db->id,c->argv,c->argc);
+    if (listLength(server.monitors) && !server.loading)
+        replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
 }
 
 /* ===================== WATCH (CAS alike for MULTI/EXEC) ===================
@@ -286,7 +286,7 @@ void touchWatchedKeysOnFlush(int dbid) {
     listNode *ln;
 
     /* For every client, check all the waited keys */
-    listRewind(tls_instance_state->server.clients,&li1);
+    listRewind(server.clients,&li1);
     while((ln = listNext(&li1))) {
         redisClient *c = listNodeValue(ln);
         listRewind(c->watched_keys,&li2);

@@ -39,7 +39,7 @@
 void listTypeTryConversion(robj *subject, robj *value) {
     if (subject->encoding != REDIS_ENCODING_ZIPLIST) return;
     if (value->encoding == REDIS_ENCODING_RAW &&
-        sdslen(value->ptr) > tls_instance_state->server.list_max_ziplist_value)
+        sdslen(value->ptr) > server.list_max_ziplist_value)
             listTypeConvert(subject,REDIS_ENCODING_LINKEDLIST);
 }
 
@@ -52,7 +52,7 @@ void listTypePush(robj *subject, robj *value, int where) {
     /* Check if we need to convert the ziplist */
     listTypeTryConversion(subject,value);
     if (subject->encoding == REDIS_ENCODING_ZIPLIST &&
-        ziplistLen(subject->ptr) >= tls_instance_state->server.list_max_ziplist_entries)
+        ziplistLen(subject->ptr) >= server.list_max_ziplist_entries)
             listTypeConvert(subject,REDIS_ENCODING_LINKEDLIST);
 
     if (subject->encoding == REDIS_ENCODING_ZIPLIST) {
@@ -317,7 +317,7 @@ void pushGenericCommand(redisClient *c, int where) {
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_LIST,event,c->argv[1],c->db->id);
     }
-    tls_instance_state->server.dirty += pushed;
+    server.dirty += pushed;
 }
 
 void lpushCommand(redisClient *c) {
@@ -359,12 +359,12 @@ void pushxGenericCommand(redisClient *c, robj *refval, robj *val, int where) {
         if (inserted) {
             /* Check if the length exceeds the ziplist length threshold. */
             if (subject->encoding == REDIS_ENCODING_ZIPLIST &&
-                ziplistLen(subject->ptr) > tls_instance_state->server.list_max_ziplist_entries)
+                ziplistLen(subject->ptr) > server.list_max_ziplist_entries)
                     listTypeConvert(subject,REDIS_ENCODING_LINKEDLIST);
             signalModifiedKey(c->db,c->argv[1]);
             notifyKeyspaceEvent(REDIS_NOTIFY_LIST,"linsert",
                                 c->argv[1],c->db->id);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
         } else {
             /* Notify client of a failed insert */
             addReply(c,shared.cnegone);
@@ -376,7 +376,7 @@ void pushxGenericCommand(redisClient *c, robj *refval, robj *val, int where) {
         listTypePush(subject,val,where);
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_LIST,event,c->argv[1],c->db->id);
-        tls_instance_state->server.dirty++;
+        server.dirty++;
     }
 
     addReplyLongLong(c,listTypeLength(subject));
@@ -471,7 +471,7 @@ void lsetCommand(redisClient *c) {
             addReply(c,shared.ok);
             signalModifiedKey(c->db,c->argv[1]);
             notifyKeyspaceEvent(REDIS_NOTIFY_LIST,"lset",c->argv[1],c->db->id);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
         }
     } else if (o->encoding == REDIS_ENCODING_LINKEDLIST) {
         listNode *ln = listIndex(o->ptr,(int)index);                            /* UPSTREAM_ISSUE: missing (int) cast */
@@ -484,7 +484,7 @@ void lsetCommand(redisClient *c) {
             addReply(c,shared.ok);
             signalModifiedKey(c->db,c->argv[1]);
             notifyKeyspaceEvent(REDIS_NOTIFY_LIST,"lset",c->argv[1],c->db->id);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
         }
     } else {
         redisPanic("Unknown list encoding");
@@ -511,7 +511,7 @@ void popGenericCommand(redisClient *c, int where) {
             dbDelete(c->db,c->argv[1]);
         }
         signalModifiedKey(c->db,c->argv[1]);
-        tls_instance_state->server.dirty++;
+        server.dirty++;
     }
 }
 
@@ -636,7 +636,7 @@ void ltrimCommand(redisClient *c) {
         notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",c->argv[1],c->db->id);
     }
     signalModifiedKey(c->db,c->argv[1]);
-    tls_instance_state->server.dirty++;
+    server.dirty++;
     addReply(c,shared.ok);
 }
 
@@ -668,7 +668,7 @@ void lremCommand(redisClient *c) {
     while (listTypeNext(li,&entry)) {
         if (listTypeEqual(&entry,obj)) {
             listTypeDelete(&entry);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
             removed++;
             if (toremove && removed == toremove) break;
         }
@@ -746,7 +746,7 @@ void rpoplpushCommand(redisClient *c) {
         }
         signalModifiedKey(c->db,touchedkey);
         decrRefCount(touchedkey);
-        tls_instance_state->server.dirty++;
+        server.dirty++;
     }
 }
 
@@ -806,7 +806,7 @@ void blockForKeys(redisClient *c, robj **keys, int numkeys, time_t timeout, robj
 
     /* Mark the client as a blocked client */
     c->flags |= REDIS_BLOCKED;
-    tls_instance_state->server.bpop_blocked_clients++;
+    server.bpop_blocked_clients++;
 }
 
 /* Unblock a client that's waiting in a blocking operation such as BLPOP */
@@ -839,12 +839,12 @@ void unblockClientWaitingData(redisClient *c) {
     }
     c->flags &= ~REDIS_BLOCKED;
     c->flags |= REDIS_UNBLOCKED;
-    tls_instance_state->server.bpop_blocked_clients--;
-    listAddNodeTail(tls_instance_state->server.unblocked_clients,c);
+    server.bpop_blocked_clients--;
+    listAddNodeTail(server.unblocked_clients,c);
 }
 
 /* If the specified key has clients blocked waiting for list pushes, this
- * function will put the key reference into the tls_instance_state->server.ready_keys list.
+ * function will put the key reference into the server.ready_keys list.
  * Note that db->ready_keys is a hash table that allows us to avoid putting
  * the same key again and again in the list in case of multiple pushes
  * made by a script or in the context of MULTI/EXEC.
@@ -859,12 +859,12 @@ void signalListAsReady(redisDb *db, robj *key) {
     /* Key was already signaled? No need to queue it again. */
     if (dictFind(db->ready_keys,key) != NULL) return;
 
-    /* Ok, we need to queue this key into tls_instance_state->server.ready_keys. */
+    /* Ok, we need to queue this key into server.ready_keys. */
     rl = zmalloc(sizeof(*rl));
     rl->key = key;
     rl->db = db;
     incrRefCount(key);
-    listAddNodeTail(tls_instance_state->server.ready_keys,rl);
+    listAddNodeTail(server.ready_keys,rl);
 
     /* We also add the key in the db->ready_keys dictionary in order
      * to avoid adding it multiple times into a list with a simple O(1)
@@ -902,7 +902,7 @@ int serveClientBlockedOnList(redisClient *receiver, robj *key, robj *dstkey, red
                                           shared.rpop;
         argv[1] = key;
         propagate((where == REDIS_HEAD) ?
-            tls_instance_state->server.lpopCommand : tls_instance_state->server.rpopCommand,
+            server.lpopCommand : server.rpopCommand,
             db->id,argv,2,REDIS_PROPAGATE_AOF|REDIS_PROPAGATE_REPL);
 
         /* BRPOP/BLPOP */
@@ -919,7 +919,7 @@ int serveClientBlockedOnList(redisClient *receiver, robj *key, robj *dstkey, red
             /* Propagate the RPOP operation. */
             argv[0] = shared.rpop;
             argv[1] = key;
-            propagate(tls_instance_state->server.rpopCommand,
+            propagate(server.rpopCommand,
                 db->id,argv,2,
                 REDIS_PROPAGATE_AOF|
                 REDIS_PROPAGATE_REPL);
@@ -929,7 +929,7 @@ int serveClientBlockedOnList(redisClient *receiver, robj *key, robj *dstkey, red
             argv[0] = shared.lpush;
             argv[1] = dstkey;
             argv[2] = value;
-            propagate(tls_instance_state->server.lpushCommand,
+            propagate(server.lpushCommand,
                 db->id,argv,3,
                 REDIS_PROPAGATE_AOF|
                 REDIS_PROPAGATE_REPL);
@@ -948,20 +948,20 @@ int serveClientBlockedOnList(redisClient *receiver, robj *key, robj *dstkey, red
  *
  * All the keys with at least one client blocked that received at least
  * one new element via some PUSH operation are accumulated into
- * the tls_instance_state->server.ready_keys list. This function will run the list and will
+ * the server.ready_keys list. This function will run the list and will
  * serve clients accordingly. Note that the function will iterate again and
  * again as a result of serving BRPOPLPUSH we can have new blocking clients
  * to serve because of the PUSH side of BRPOPLPUSH. */
 void handleClientsBlockedOnLists(void) {
-    while(listLength(tls_instance_state->server.ready_keys) != 0) {
+    while(listLength(server.ready_keys) != 0) {
         list *l;
 
-        /* Point tls_instance_state->server.ready_keys to a fresh list and save the current one
+        /* Point server.ready_keys to a fresh list and save the current one
          * locally. This way as we run the old list we are free to call
-         * signalListAsReady() that may push new elements in tls_instance_state->server.ready_keys
+         * signalListAsReady() that may push new elements in server.ready_keys
          * when handling clients blocked into BRPOPLPUSH. */
-        l = tls_instance_state->server.ready_keys;
-        tls_instance_state->server.ready_keys = listCreate();
+        l = server.ready_keys;
+        server.ready_keys = listCreate();
 
         while(listLength(l) != 0) {
             robj *o;
@@ -1046,11 +1046,11 @@ int getTimeoutFromObjectOrReply(redisClient *c, robj *object, time_t *timeout) {
 
 #ifdef _WIN32
     if (tval > 0)
-        *timeout = tls_instance_state->server.unixtime + (time_t) tval;
+        *timeout = server.unixtime + (time_t) tval;
     else
         *timeout = 0;
 #else
-    if (tval > 0) tval += tls_instance_state->server.unixtime;
+    if (tval > 0) tval += server.unixtime;
     *timeout = tval;
 #endif
 
@@ -1091,7 +1091,7 @@ void blockingPopGenericCommand(redisClient *c, int where) {
                                             c->argv[j],c->db->id);
                     }
                     signalModifiedKey(c->db,c->argv[j]);
-                    tls_instance_state->server.dirty++;
+                    server.dirty++;
 
                     /* Replicate it as an [LR]POP instead of B[LR]POP. */
                     rewriteClientCommandVector(c,2,

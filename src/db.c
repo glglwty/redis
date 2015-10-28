@@ -47,8 +47,8 @@ robj *lookupKey(redisDb *db, robj *key) {
         /* Update the access time for the ageing algorithm.
          * Don't do it if we have a saving child, as this will trigger
          * a copy on write madness. */
-        if (tls_instance_state->server.rdb_child_pid == -1 && tls_instance_state->server.aof_child_pid == -1)
-            val->lru = tls_instance_state->server.lruclock;
+        if (server.rdb_child_pid == -1 && server.aof_child_pid == -1)
+            val->lru = server.lruclock;
         return val;
     } else {
         return NULL;
@@ -61,9 +61,9 @@ robj *lookupKeyRead(redisDb *db, robj *key) {
     expireIfNeeded(db,key);
     val = lookupKey(db,key);
     if (val == NULL)
-        tls_instance_state->server.stat_keyspace_misses++;
+        server.stat_keyspace_misses++;
     else
-        tls_instance_state->server.stat_keyspace_hits++;
+        server.stat_keyspace_hits++;
     return val;
 }
 
@@ -209,18 +209,18 @@ PORT_LONGLONG emptyDb(void(callback)(void*)) {
     int j;
     PORT_LONGLONG removed = 0;
 
-    for (j = 0; j < tls_instance_state->server.dbnum; j++) {
-        removed += dictSize(tls_instance_state->server.db[j].dict);
-        dictEmpty(tls_instance_state->server.db[j].dict,callback);
-        dictEmpty(tls_instance_state->server.db[j].expires,callback);
+    for (j = 0; j < server.dbnum; j++) {
+        removed += dictSize(server.db[j].dict);
+        dictEmpty(server.db[j].dict,callback);
+        dictEmpty(server.db[j].expires,callback);
     }
     return removed;
 }
 
 int selectDb(redisClient *c, int id) {
-    if (id < 0 || id >= tls_instance_state->server.dbnum)
+    if (id < 0 || id >= server.dbnum)
         return REDIS_ERR;
-    c->db = &tls_instance_state->server.db[id];
+    c->db = &server.db[id];
     return REDIS_OK;
 }
 
@@ -246,7 +246,7 @@ void signalFlushedDb(int dbid) {
  *----------------------------------------------------------------------------*/
 
 void flushdbCommand(redisClient *c) {
-    tls_instance_state->server.dirty += dictSize(c->db->dict);
+    server.dirty += dictSize(c->db->dict);
     signalFlushedDb(c->db->id);
     dictEmpty(c->db->dict,NULL);
     dictEmpty(c->db->expires,NULL);
@@ -255,24 +255,24 @@ void flushdbCommand(redisClient *c) {
 
 void flushallCommand(redisClient *c) {
     signalFlushedDb(-1);
-    tls_instance_state->server.dirty += emptyDb(NULL);
+    server.dirty += emptyDb(NULL);
     addReply(c,shared.ok);
-    if (tls_instance_state->server.rdb_child_pid != -1) {
+    if (server.rdb_child_pid != -1) {
 #ifdef _WIN32
         AbortForkOperation();
 #else
-        kill(tls_instance_state->server.rdb_child_pid,SIGUSR1);
+        kill(server.rdb_child_pid,SIGUSR1);
 #endif
-        rdbRemoveTempFile(tls_instance_state->server.rdb_child_pid);
+        rdbRemoveTempFile(server.rdb_child_pid);
     }
-    if (tls_instance_state->server.saveparamslen > 0) {
+    if (server.saveparamslen > 0) {
         /* Normally rdbSave() will reset dirty, but we don't want this here
          * as otherwise FLUSHALL will not be replicated nor put into the AOF. */
-        PORT_LONGLONG saved_dirty = tls_instance_state->server.dirty;
-        rdbSave(tls_instance_state->server.rdb_filename);
-        tls_instance_state->server.dirty = saved_dirty;
+        PORT_LONGLONG saved_dirty = server.dirty;
+        rdbSave(server.rdb_filename);
+        server.dirty = saved_dirty;
     }
-    tls_instance_state->server.dirty++;
+    server.dirty++;
 }
 
 void delCommand(redisClient *c) {
@@ -284,7 +284,7 @@ void delCommand(redisClient *c) {
             signalModifiedKey(c->db,c->argv[j]);
             notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,
                 "del",c->argv[j],c->db->id);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
             deleted++;
         }
     }
@@ -603,7 +603,7 @@ void dbsizeCommand(redisClient *c) {
 }
 
 void lastsaveCommand(redisClient *c) {
-    addReplyLongLong(c,tls_instance_state->server.lastsave);
+    addReplyLongLong(c,server.lastsave);
 }
 
 void typeCommand(redisClient *c) {
@@ -648,7 +648,7 @@ void shutdownCommand(redisClient *c) {
      * with half-read data).
      *
      * Also when in Sentinel mode clear the SAVE flag and force NOSAVE. */
-    if (tls_instance_state->server.loading || tls_instance_state->server.sentinel_mode)
+    if (server.loading || server.sentinel_mode)
         flags = (flags & ~REDIS_SHUTDOWN_SAVE) | REDIS_SHUTDOWN_NOSAVE;
     if (prepareForShutdown(flags) == REDIS_OK) exit(0);
     addReplyError(c,"Errors trying to SHUTDOWN. Check logs.");
@@ -688,7 +688,7 @@ void renameGenericCommand(redisClient *c, int nx) {
         c->argv[1],c->db->id);
     notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"rename_to",
         c->argv[2],c->db->id);
-    tls_instance_state->server.dirty++;
+    server.dirty++;
     addReply(c,nx ? shared.cone : shared.ok);
 }
 
@@ -744,7 +744,7 @@ void moveCommand(redisClient *c) {
 
     /* OK! key moved, free the entry in the source DB */
     dbDelete(src,c->argv[1]);
-    tls_instance_state->server.dirty++;
+    server.dirty++;
     addReply(c,shared.cone);
 }
 
@@ -800,9 +800,9 @@ void propagateExpire(redisDb *db, robj *key) {
     incrRefCount(argv[0]);
     incrRefCount(argv[1]);
 
-    if (tls_instance_state->server.aof_state != REDIS_AOF_OFF)
-        feedAppendOnlyFile(tls_instance_state->server.delCommand,db->id,argv,2);
-    replicationFeedSlaves(tls_instance_state->server.slaves,db->id,argv,2);
+    if (server.aof_state != REDIS_AOF_OFF)
+        feedAppendOnlyFile(server.delCommand,db->id,argv,2);
+    replicationFeedSlaves(server.slaves,db->id,argv,2);
 
     decrRefCount(argv[0]);
     decrRefCount(argv[1]);
@@ -815,14 +815,14 @@ int expireIfNeeded(redisDb *db, robj *key) {
     if (when < 0) return 0; /* No expire for this key */
 
     /* Don't expire anything while loading. It will be done later. */
-    if (tls_instance_state->server.loading) return 0;
+    if (server.loading) return 0;
 
     /* If we are in the context of a Lua script, we claim that time is
      * blocked to when the Lua script started. This way a key can expire
      * only the first time it is accessed and not in the middle of the
      * script execution, making propagation to slaves / AOF consistent.
      * See issue #1525 on Github for more information. */
-    now = tls_instance_state->server.lua_caller ? tls_instance_state->server.lua_time_start : mstime();
+    now = server.lua_caller ? server.lua_time_start : mstime();
 
     /* If we are running in the context of a slave, return ASAP:
      * the slave key expiration is controlled by the master that will
@@ -831,13 +831,13 @@ int expireIfNeeded(redisDb *db, robj *key) {
      * Still we try to return the right information to the caller,
      * that is, 0 if we think the key should be still valid, 1 if
      * we think the key is expired at this time. */
-    if (tls_instance_state->server.masterhost != NULL) return now > when;
+    if (server.masterhost != NULL) return now > when;
 
     /* Return when this key has not expired */
     if (now <= when) return 0;
 
     /* Delete the key */
-    tls_instance_state->server.stat_expiredkeys++;
+    server.stat_expiredkeys++;
     propagateExpire(db,key);
     notifyKeyspaceEvent(REDIS_NOTIFY_EXPIRED,
         "expired",key,db->id);
@@ -877,11 +877,11 @@ void expireGenericCommand(redisClient *c, PORT_LONGLONG basetime, int unit) {
      *
      * Instead we take the other branch of the IF statement setting an expire
      * (possibly in the past) and wait for an explicit DEL from the master. */
-    if (when <= mstime() && !tls_instance_state->server.loading && !tls_instance_state->server.masterhost) {
+    if (when <= mstime() && !server.loading && !server.masterhost) {
         robj *aux;
 
         redisAssertWithInfo(c,key,dbDelete(c->db,key));
-        tls_instance_state->server.dirty++;
+        server.dirty++;
 
         /* Replicate/AOF this as an explicit DEL. */
         aux = createStringObject("DEL",3);
@@ -896,7 +896,7 @@ void expireGenericCommand(redisClient *c, PORT_LONGLONG basetime, int unit) {
         addReply(c,shared.cone);
         signalModifiedKey(c->db,key);
         notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"expire",key,c->db->id);
-        tls_instance_state->server.dirty++;
+        server.dirty++;
         return;
     }
 }
@@ -956,7 +956,7 @@ void persistCommand(redisClient *c) {
     } else {
         if (removeExpire(c->db,c->argv[1])) {
             addReply(c,shared.cone);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
         } else {
             addReply(c,shared.czero);
         }

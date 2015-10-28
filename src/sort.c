@@ -138,7 +138,7 @@ int sortCompare(const void *s1, const void *s2) {
     const redisSortObject *so1 = s1, *so2 = s2;
     int cmp;
 
-    if (!tls_instance_state->server.sort_alpha) {
+    if (!server.sort_alpha) {
         /* Numeric sorting. Here it's trivial as we precomputed scores */
         if (so1->u.score > so2->u.score) {
             cmp = 1;
@@ -152,7 +152,7 @@ int sortCompare(const void *s1, const void *s2) {
         }
     } else {
         /* Alphanumeric sorting */
-        if (tls_instance_state->server.sort_bypattern) {
+        if (server.sort_bypattern) {
             if (!so1->u.cmpobj || !so2->u.cmpobj) {
                 /* At least one compare object is NULL */
                 if (so1->u.cmpobj == so2->u.cmpobj)
@@ -163,7 +163,7 @@ int sortCompare(const void *s1, const void *s2) {
                     cmp = 1;
             } else {
                 /* We have both the objects, compare them. */
-                if (tls_instance_state->server.sort_store) {
+                if (server.sort_store) {
                     cmp = compareStringObjects(so1->u.cmpobj,so2->u.cmpobj);
                 } else {
                     /* Here we can use strcoll() directly as we are sure that
@@ -173,14 +173,14 @@ int sortCompare(const void *s1, const void *s2) {
             }
         } else {
             /* Compare elements directly. */
-            if (tls_instance_state->server.sort_store) {
+            if (server.sort_store) {
                 cmp = compareStringObjects(so1->obj,so2->obj);
             } else {
                 cmp = collateStringObjects(so1->obj,so2->obj);
             }
         }
     }
-    return tls_instance_state->server.sort_desc ? -cmp : cmp;
+    return server.sort_desc ? -cmp : cmp;
 }
 
 /* The SORT command is the most complex command in Redis. Warning: this code
@@ -444,10 +444,10 @@ void sortCommand(redisClient *c) {
     }
 
     if (dontsort == 0) {
-        tls_instance_state->server.sort_desc = desc;
-        tls_instance_state->server.sort_alpha = alpha;
-        tls_instance_state->server.sort_bypattern = sortby ? 1 : 0;
-        tls_instance_state->server.sort_store = storekey ? 1 : 0;
+        server.sort_desc = desc;
+        server.sort_alpha = alpha;
+        server.sort_bypattern = sortby ? 1 : 0;
+        server.sort_store = storekey ? 1 : 0;
         if (sortby && (start != 0 || end != vectorlen-1))
             pqsort(vector,vectorlen,sizeof(redisSortObject),sortCompare, start,end);
         else
@@ -522,11 +522,11 @@ void sortCommand(redisClient *c) {
             setKey(c->db,storekey,sobj);
             notifyKeyspaceEvent(REDIS_NOTIFY_LIST,"sortstore",storekey,
                                 c->db->id);
-            tls_instance_state->server.dirty += outputlen;
+            server.dirty += outputlen;
         } else if (dbDelete(c->db,storekey)) {
             signalModifiedKey(c->db,storekey);
             notifyKeyspaceEvent(REDIS_NOTIFY_GENERIC,"del",storekey,c->db->id);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
         }
         decrRefCount(sobj);
         addReplyLongLong(c,outputlen);

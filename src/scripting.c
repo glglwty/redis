@@ -205,7 +205,7 @@ void luaSortArray(lua_State *lua) {
 int luaRedisGenericCommand(lua_State *lua, int raise_error) {
     int j, argc = lua_gettop(lua);
     struct redisCommand *cmd;
-    redisClient *c = tls_instance_state->server.lua_client;
+    redisClient *c = server.lua_client;
     sds reply;
 
     /* Cached across calls. */
@@ -319,19 +319,19 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
      * command marked as non-deterministic was already called in the context
      * of this script. */
     if (cmd->flags & REDIS_CMD_WRITE) {
-        if (tls_instance_state->server.lua_random_dirty) {
+        if (server.lua_random_dirty) {
             luaPushError(lua,
                 "Write commands not allowed after non deterministic commands");
             goto cleanup;
-        } else if (tls_instance_state->server.masterhost && tls_instance_state->server.repl_slave_ro &&
-                   !tls_instance_state->server.loading &&
-                   !(tls_instance_state->server.lua_caller->flags & REDIS_MASTER))
+        } else if (server.masterhost && server.repl_slave_ro &&
+                   !server.loading &&
+                   !(server.lua_caller->flags & REDIS_MASTER))
         {
             luaPushError(lua, shared.roslaveerr->ptr);
             goto cleanup;
-        } else if (tls_instance_state->server.stop_writes_on_bgsave_err &&
-                   tls_instance_state->server.saveparamslen > 0 &&
-                   tls_instance_state->server.lastbgsave_status == REDIS_ERR)
+        } else if (server.stop_writes_on_bgsave_err &&
+                   server.saveparamslen > 0 &&
+                   server.lastbgsave_status == REDIS_ERR)
         {
             luaPushError(lua, shared.bgsaveerr->ptr);
             goto cleanup;
@@ -342,7 +342,7 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
      * could enlarge the memory usage are not allowed, but only if this is the
      * first write in the context of this script, otherwise we can't stop
      * in the middle. */
-    if (tls_instance_state->server.maxmemory && tls_instance_state->server.lua_write_dirty == 0 &&
+    if (server.maxmemory && server.lua_write_dirty == 0 &&
         (cmd->flags & REDIS_CMD_DENYOOM))
     {
         if (freeMemoryIfNeeded() == REDIS_ERR) {
@@ -351,8 +351,8 @@ int luaRedisGenericCommand(lua_State *lua, int raise_error) {
         }
     }
 
-    if (cmd->flags & REDIS_CMD_RANDOM) tls_instance_state->server.lua_random_dirty = 1;
-    if (cmd->flags & REDIS_CMD_WRITE) tls_instance_state->server.lua_write_dirty = 1;
+    if (cmd->flags & REDIS_CMD_RANDOM) server.lua_random_dirty = 1;
+    if (cmd->flags & REDIS_CMD_WRITE) server.lua_write_dirty = 1;
 
     /* Run the command */
     c->cmd = cmd;
@@ -527,19 +527,19 @@ void luaMaskCountHook(lua_State *lua, lua_Debug *ar) {
     REDIS_NOTUSED(ar);
     REDIS_NOTUSED(lua);
 
-    elapsed = mstime() - tls_instance_state->server.lua_time_start;
-    if (elapsed >= tls_instance_state->server.lua_time_limit && tls_instance_state->server.lua_timedout == 0) {
+    elapsed = mstime() - server.lua_time_start;
+    if (elapsed >= server.lua_time_limit && server.lua_timedout == 0) {
         redisLog(REDIS_WARNING,"Lua slow script detected: still in execution after %lld milliseconds. You can try killing the script using the SCRIPT KILL command.",elapsed);
-        tls_instance_state->server.lua_timedout = 1;
+        server.lua_timedout = 1;
         /* Once the script timeouts we reenter the event loop to permit others
          * to call SCRIPT KILL or SHUTDOWN NOSAVE if needed. For this reason
          * we need to mask the client executing the script from the event loop.
          * If we don't do that the client may disconnect and could no longer be
          * here when the EVAL command will return. */
-         aeDeleteFileEvent(tls_instance_state->server.el, tls_instance_state->server.lua_caller->fd, AE_READABLE);
+         aeDeleteFileEvent(server.el, server.lua_caller->fd, AE_READABLE);
     }
-    if (tls_instance_state->server.lua_timedout) processEventsWhileBlocked();
-    if (tls_instance_state->server.lua_kill) {
+    if (server.lua_timedout) processEventsWhileBlocked();
+    if (server.lua_kill) {
         redisLog(REDIS_WARNING,"Lua script killed by user with SCRIPT KILL.");
         lua_pushstring(lua,"Script killed by user with SCRIPT KILL...");
         lua_error(lua);
@@ -633,7 +633,7 @@ void scriptingInit(void) {
     /* Initialize a dictionary we use to map SHAs to scripts.
      * This is useful for replication, as we need to replicate EVALSHA
      * as EVAL, so we need to remember the associated script. */
-    tls_instance_state->server.lua_scripts = dictCreate(&shaScriptObjectDictType,NULL);
+    server.lua_scripts = dictCreate(&shaScriptObjectDictType,NULL);
 
     /* Register the redis commands table and fields */
     lua_newtable(lua);
@@ -735,9 +735,9 @@ void scriptingInit(void) {
      * inside the Lua interpreter.
      * Note: there is no need to create it again when this function is called
      * by scriptingReset(). */
-    if (tls_instance_state->server.lua_client == NULL) {
-        tls_instance_state->server.lua_client = createClient(-1);
-        tls_instance_state->server.lua_client->flags |= REDIS_LUA_CLIENT;
+    if (server.lua_client == NULL) {
+        server.lua_client = createClient(-1);
+        server.lua_client->flags |= REDIS_LUA_CLIENT;
     }
 
     /* Lua beginners often don't use "local", this is likely to introduce
@@ -745,14 +745,14 @@ void scriptingInit(void) {
      * to global variables. */
     scriptingEnableGlobalsProtection(lua);
 
-    tls_instance_state->server.lua = lua;
+    server.lua = lua;
 }
 
 /* Release resources related to Lua scripting.
  * This function is used in order to reset the scripting environment. */
 void scriptingRelease(void) {
-    dictRelease(tls_instance_state->server.lua_scripts);
-    lua_close(tls_instance_state->server.lua);
+    dictRelease(server.lua_scripts);
+    lua_close(server.lua);
 }
 
 void scriptingReset(void) {
@@ -897,7 +897,7 @@ int luaCreateFunction(redisClient *c, lua_State *lua, char *funcname, robj *body
      * so that we can replicate / write in the AOF all the
      * EVALSHA commands as EVAL using the original script. */
     {
-        int retval = dictAdd(tls_instance_state->server.lua_scripts,
+        int retval = dictAdd(server.lua_scripts,
                              sdsnewlen(funcname+2,40),body);
         redisAssertWithInfo(c,NULL,retval == DICT_OK);
         incrRefCount(body);
@@ -906,7 +906,7 @@ int luaCreateFunction(redisClient *c, lua_State *lua, char *funcname, robj *body
 }
 
 void evalGenericCommand(redisClient *c, int evalsha) {
-    lua_State *lua = tls_instance_state->server.lua;
+    lua_State *lua = server.lua;
     char funcname[43];
     PORT_LONGLONG numkeys;
     int delhook = 0, err;
@@ -923,8 +923,8 @@ void evalGenericCommand(redisClient *c, int evalsha) {
      *
      * Thanks to this flag we'll raise an error every time a write command
      * is called after a random command was used. */
-    tls_instance_state->server.lua_random_dirty = 0;
-    tls_instance_state->server.lua_write_dirty = 0;
+    server.lua_random_dirty = 0;
+    server.lua_write_dirty = 0;
 
     /* Get the number of arguments that are keys */
     if (getLongLongFromObjectOrReply(c,c->argv[2],&numkeys,NULL) != REDIS_OK)
@@ -990,16 +990,16 @@ void evalGenericCommand(redisClient *c, int evalsha) {
     luaSetGlobalArray(lua,"ARGV",c->argv+3+numkeys,(int)(c->argc-3-numkeys));
 
     /* Select the right DB in the context of the Lua client */
-    selectDb(tls_instance_state->server.lua_client,c->db->id);
+    selectDb(server.lua_client,c->db->id);
 
     /* Set a hook in order to be able to stop the script execution if it
      * is running for too much time.
      * We set the hook only if the time limit is enabled as the hook will
      * make the Lua script execution slower. */
-    tls_instance_state->server.lua_caller = c;
-    tls_instance_state->server.lua_time_start = mstime();
-    tls_instance_state->server.lua_kill = 0;
-    if (tls_instance_state->server.lua_time_limit > 0 && tls_instance_state->server.masterhost == NULL) {
+    server.lua_caller = c;
+    server.lua_time_start = mstime();
+    server.lua_kill = 0;
+    if (server.lua_time_limit > 0 && server.masterhost == NULL) {
         lua_sethook(lua,luaMaskCountHook,LUA_MASKCOUNT,100000);
         delhook = 1;
     }
@@ -1011,14 +1011,14 @@ void evalGenericCommand(redisClient *c, int evalsha) {
 
     /* Perform some cleanup that we need to do both on error and success. */
     if (delhook) lua_sethook(lua,luaMaskCountHook,0,0); /* Disable hook */
-    if (tls_instance_state->server.lua_timedout) {
-        tls_instance_state->server.lua_timedout = 0;
+    if (server.lua_timedout) {
+        server.lua_timedout = 0;
         /* Restore the readable handler that was unregistered when the
          * script timeout was detected. */
-        aeCreateFileEvent(tls_instance_state->server.el,c->fd,AE_READABLE,
+        aeCreateFileEvent(server.el,c->fd,AE_READABLE,
                           readQueryFromClient,c);
     }
-    tls_instance_state->server.lua_caller = NULL;
+    server.lua_caller = NULL;
 
     /* Call the Lua garbage collector from time to time to avoid a
      * full cycle performed by Lua, which adds too latency.
@@ -1063,7 +1063,7 @@ void evalGenericCommand(redisClient *c, int evalsha) {
             /* This script is not in our script cache, replicate it as
              * EVAL, then add it into the script cache, as from now on
              * slaves and AOF know about it. */
-            robj *script = dictFetchValue(tls_instance_state->server.lua_scripts,c->argv[1]->ptr);
+            robj *script = dictFetchValue(server.lua_scripts,c->argv[1]->ptr);
 
             replicationScriptCacheAdd(c->argv[1]->ptr);
             redisAssertWithInfo(c,NULL,script != NULL);
@@ -1139,13 +1139,13 @@ void scriptCommand(redisClient *c) {
         scriptingReset();
         addReply(c,shared.ok);
         replicationScriptCacheFlush();
-        tls_instance_state->server.dirty++; /* Propagating this command is a good idea. */
+        server.dirty++; /* Propagating this command is a good idea. */
     } else if (c->argc >= 2 && !strcasecmp(c->argv[1]->ptr,"exists")) {
         int j;
 
         addReplyMultiBulkLen(c, c->argc-2);
         for (j = 2; j < c->argc; j++) {
-            if (dictFind(tls_instance_state->server.lua_scripts,c->argv[j]->ptr))
+            if (dictFind(server.lua_scripts,c->argv[j]->ptr))
                 addReply(c,shared.cone);
             else
                 addReply(c,shared.czero);
@@ -1158,8 +1158,8 @@ void scriptCommand(redisClient *c) {
         funcname[1] = '_';
         sha1hex(funcname+2,c->argv[2]->ptr,sdslen(c->argv[2]->ptr));
         sha = sdsnewlen(funcname+2,40);
-        if (dictFind(tls_instance_state->server.lua_scripts,sha) == NULL) {
-            if (luaCreateFunction(c,tls_instance_state->server.lua,funcname,c->argv[2])
+        if (dictFind(server.lua_scripts,sha) == NULL) {
+            if (luaCreateFunction(c,server.lua,funcname,c->argv[2])
                     == REDIS_ERR) {
                 sdsfree(sha);
                 return;
@@ -1169,12 +1169,12 @@ void scriptCommand(redisClient *c) {
         sdsfree(sha);
         forceCommandPropagation(c,REDIS_PROPAGATE_REPL|REDIS_PROPAGATE_AOF);
     } else if (c->argc == 2 && !strcasecmp(c->argv[1]->ptr,"kill")) {
-        if (tls_instance_state->server.lua_caller == NULL) {
+        if (server.lua_caller == NULL) {
             addReplySds(c,sdsnew("-NOTBUSY No scripts in execution right now.\r\n"));
-        } else if (tls_instance_state->server.lua_write_dirty) {
+        } else if (server.lua_write_dirty) {
             addReplySds(c,sdsnew("-UNKILLABLE Sorry the script already executed write commands against the dataset. You can either wait the script termination or kill the server in a hard way using the SHUTDOWN NOSAVE command.\r\n"));
         } else {
-            tls_instance_state->server.lua_kill = 1;
+            server.lua_kill = 1;
             addReply(c,shared.ok);
         }
     } else {

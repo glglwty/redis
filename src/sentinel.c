@@ -447,7 +447,7 @@ struct redisCommand sentinelcmds[] = {
 /* This function overwrites a few normal Redis config default with Sentinel
  * specific defaults. */
 void initSentinelConfig(void) {
-    tls_instance_state->server.port = REDIS_SENTINEL_PORT;
+    server.port = REDIS_SENTINEL_PORT;
 }
 
 /* Perform the Sentinel mode initialization. */
@@ -456,12 +456,12 @@ void initSentinel(void) {
 
     /* Remove usual Redis commands from the command table, then just add
      * the SENTINEL command. */
-    dictEmpty(tls_instance_state->server.commands,NULL);
+    dictEmpty(server.commands,NULL);
     for (j = 0; j < sizeof(sentinelcmds)/sizeof(sentinelcmds[0]); j++) {
         int retval;
         struct redisCommand *cmd = sentinelcmds+j;
 
-        retval = dictAdd(tls_instance_state->server.commands, sdsnew(cmd->name), cmd);
+        retval = dictAdd(server.commands, sdsnew(cmd->name), cmd);
         redisAssert(retval == DICT_OK);
     }
 
@@ -480,16 +480,16 @@ void initSentinel(void) {
 /* This function gets called when the server is in Sentinel mode, started,
  * loaded the configuration, and is ready for normal operations. */
 void sentinelIsRunning(void) {
-    redisLog(REDIS_WARNING,"Sentinel runid is %s", tls_instance_state->server.runid);
+    redisLog(REDIS_WARNING,"Sentinel runid is %s", server.runid);
 
-    if (tls_instance_state->server.configfile == NULL) {
+    if (server.configfile == NULL) {
         redisLog(REDIS_WARNING,
             "Sentinel started without a config file. Exiting...");
         exit(1);
-    } else if (access(tls_instance_state->server.configfile,W_OK) == -1) {
+    } else if (access(server.configfile,W_OK) == -1) {
         redisLog(REDIS_WARNING,
             "Sentinel config file %s is not writable: %s. Exiting...",
-            tls_instance_state->server.configfile,strerror(errno));
+            server.configfile,strerror(errno));
         exit(1);
     }
 
@@ -604,7 +604,7 @@ void sentinelEvent(int level, char *type, sentinelRedisInstance *ri,
     }
 
     /* Log the message if the log level allows it to be logged. */
-    if (level >= tls_instance_state->server.verbosity)
+    if (level >= server.verbosity)
         redisLog(level,"%s %s",type,msg);
 
     /* Publish the message via Pub/Sub if it's not a debugging one. */
@@ -1727,15 +1727,15 @@ void rewriteConfigSentinelOption(struct rewriteConfigState *state) {
  * On failure the function logs a warning on the Redis log. */
 void sentinelFlushConfig(void) {
     int fd = -1;
-    int saved_hz = tls_instance_state->server.hz;
+    int saved_hz = server.hz;
     int rewrite_status;
 
-    tls_instance_state->server.hz = REDIS_DEFAULT_HZ;
-    rewrite_status = rewriteConfig(tls_instance_state->server.configfile);
-    tls_instance_state->server.hz = saved_hz;
+    server.hz = REDIS_DEFAULT_HZ;
+    rewrite_status = rewriteConfig(server.configfile);
+    server.hz = saved_hz;
 
     if (rewrite_status == -1) goto werr;
-    if ((fd = open(tls_instance_state->server.configfile,O_RDONLY,0)) == -1) goto werr;
+    if ((fd = open(server.configfile,O_RDONLY,0)) == -1) goto werr;
 #ifndef _WIN32
     if (fsync(fd) == -1) goto werr;
 #endif
@@ -1825,7 +1825,7 @@ void sentinelSendAuthIfNeeded(sentinelRedisInstance *ri, redisAsyncContext *c) {
 void sentinelSetClientName(sentinelRedisInstance *ri, redisAsyncContext *c, char *type) {
     char name[64];
 
-    snprintf(name,sizeof(name),"sentinel-%.8s-%s",tls_instance_state->server.runid,type);
+    snprintf(name,sizeof(name),"sentinel-%.8s-%s",server.runid,type);
     if (redisAsyncCommand(c, sentinelDiscardReplyCallback, NULL,
         "CLIENT SETNAME %s", name) == REDIS_OK)
     {
@@ -1849,7 +1849,7 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
         } else {
             ri->cc_conn_time = mstime();
             ri->cc->data = ri;
-            redisAeAttach(tls_instance_state->server.el,ri->cc);
+            redisAeAttach(server.el,ri->cc);
             redisAsyncSetConnectCallback(ri->cc,
                                             sentinelLinkEstablishedCallback);
             redisAsyncSetDisconnectCallback(ri->cc,
@@ -1873,7 +1873,7 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
 
             ri->pc_conn_time = mstime();
             ri->pc->data = ri;
-            redisAeAttach(tls_instance_state->server.el,ri->pc);
+            redisAeAttach(server.el,ri->pc);
             redisAsyncSetConnectCallback(ri->pc,
                                             sentinelLinkEstablishedCallback);
             redisAsyncSetDisconnectCallback(ri->pc,
@@ -2355,7 +2355,7 @@ void sentinelReceiveHelloMessages(redisAsyncContext *c, void *reply, void *privd
         strcmp(r->element[0]->str,"message") != 0) return;
 
     /* We are not interested in meeting ourselves */
-    if (strstr(r->element[2]->str,tls_instance_state->server.runid) != NULL) return;
+    if (strstr(r->element[2]->str,server.runid) != NULL) return;
 
     sentinelProcessHelloMessage(r->element[2]->str, r->element[2]->len);
 }
@@ -2392,13 +2392,13 @@ int sentinelSendHello(sentinelRedisInstance *ri) {
         announce_ip = ip;
     }
     announce_port = sentinel.announce_port ?
-                    sentinel.announce_port : tls_instance_state->server.port;
+                    sentinel.announce_port : server.port;
 
     /* Format and send the Hello message. */
     snprintf(payload,sizeof(payload),
         "%s,%d,%s,%llu," /* Info about this sentinel. */
         "%s,%s,%d,%llu", /* Info about current master. */
-        announce_ip, announce_port, tls_instance_state->server.runid,
+        announce_ip, announce_port, server.runid,
         (PORT_ULONGLONG) sentinel.current_epoch,
         /* --- */
         master->name,master_addr->ip,master_addr->port,
@@ -3349,7 +3349,7 @@ void sentinelAskMasterStateToOtherSentinels(sentinelRedisInstance *master, int f
                     master->addr->ip, port,
                     sentinel.current_epoch,
                     (master->failover_state > SENTINEL_FAILOVER_STATE_NONE) ?
-                    tls_instance_state->server.runid : "*");
+                    server.runid : "*");
         if (retval == REDIS_OK) ri->pending_commands++;
     }
     dictReleaseIterator(di);
@@ -3381,7 +3381,7 @@ char *sentinelVoteLeader(sentinelRedisInstance *master, uint64_t req_epoch, char
         /* If we did not voted for ourselves, set the master failover start
          * time to now, in order to force a delay before we can start a
          * failover for the same master. */
-        if (strcasecmp(master->leader,tls_instance_state->server.runid))
+        if (strcasecmp(master->leader,server.runid))
             master->failover_start_time = mstime()+rand()%SENTINEL_MAX_DESYNC;
     }
 
@@ -3462,7 +3462,7 @@ char *sentinelGetLeader(sentinelRedisInstance *master, uint64_t epoch) {
     if (winner)
         myvote = sentinelVoteLeader(master,epoch,winner,&leader_epoch);
     else
-        myvote = sentinelVoteLeader(master,epoch,tls_instance_state->server.runid,&leader_epoch);
+        myvote = sentinelVoteLeader(master,epoch,server.runid,&leader_epoch);
 
     if (myvote && leader_epoch == epoch) {
         uint64_t votes = sentinelLeaderIncr(counters,myvote);
@@ -3714,7 +3714,7 @@ void sentinelFailoverWaitStart(sentinelRedisInstance *ri) {
 
     /* Check if we are the leader for the failover epoch. */
     leader = sentinelGetLeader(ri, ri->failover_epoch);
-    isleader = leader && strcasecmp(leader,tls_instance_state->server.runid) == 0;
+    isleader = leader && strcasecmp(leader,server.runid) == 0;
     sdsfree(leader);
 
     /* If I'm not the leader, and it is not a forced failover via
@@ -4085,6 +4085,6 @@ void sentinelTimer(void) {
      * exactly continue to stay synchronized asking to be voted at the
      * same time again and again (resulting in nobody likely winning the
      * election because of split brain voting). */
-    tls_instance_state->server.hz = REDIS_DEFAULT_HZ + rand() % REDIS_DEFAULT_HZ;
+    server.hz = REDIS_DEFAULT_HZ + rand() % REDIS_DEFAULT_HZ;
 }
 

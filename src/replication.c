@@ -74,82 +74,82 @@ char *replicationGetSlaveName(redisClient *c) {
 /* ---------------------------------- MASTER -------------------------------- */
 
 void createReplicationBacklog(void) {
-    redisAssert(tls_instance_state->server.repl_backlog == NULL);
-    tls_instance_state->server.repl_backlog = zmalloc(tls_instance_state->server.repl_backlog_size);
-    tls_instance_state->server.repl_backlog_histlen = 0;
-    tls_instance_state->server.repl_backlog_idx = 0;
+    redisAssert(server.repl_backlog == NULL);
+    server.repl_backlog = zmalloc(server.repl_backlog_size);
+    server.repl_backlog_histlen = 0;
+    server.repl_backlog_idx = 0;
     /* When a new backlog buffer is created, we increment the replication
      * offset by one to make sure we'll not be able to PSYNC with any
      * previous slave. This is needed because we avoid incrementing the
      * master_repl_offset if no backlog exists nor slaves are attached. */
-    tls_instance_state->server.master_repl_offset++;
+    server.master_repl_offset++;
 
     /* We don't have any data inside our buffer, but virtually the first
      * byte we have is the next byte that will be generated for the
      * replication stream. */
-    tls_instance_state->server.repl_backlog_off = tls_instance_state->server.master_repl_offset+1;
+    server.repl_backlog_off = server.master_repl_offset+1;
 }
 
 /* This function is called when the user modifies the replication backlog
  * size at runtime. It is up to the function to both update the
- * tls_instance_state->server.repl_backlog_size and to resize the buffer and setup it so that
+ * server.repl_backlog_size and to resize the buffer and setup it so that
  * it contains the same data as the previous one (possibly less data, but
  * the most recent bytes, or the same data and more free space in case the
  * buffer is enlarged). */
 void resizeReplicationBacklog(PORT_LONGLONG newsize) {
     if (newsize < REDIS_REPL_BACKLOG_MIN_SIZE)
         newsize = REDIS_REPL_BACKLOG_MIN_SIZE;
-    if (tls_instance_state->server.repl_backlog_size == newsize) return;
+    if (server.repl_backlog_size == newsize) return;
 
-    tls_instance_state->server.repl_backlog_size = newsize;
-    if (tls_instance_state->server.repl_backlog != NULL) {
+    server.repl_backlog_size = newsize;
+    if (server.repl_backlog != NULL) {
         /* What we actually do is to flush the old buffer and realloc a new
          * empty one. It will refill with new data incrementally.
          * The reason is that copying a few gigabytes adds latency and even
          * worse often we need to alloc additional space before freeing the
          * old buffer. */
-        zfree(tls_instance_state->server.repl_backlog);
-        tls_instance_state->server.repl_backlog = zmalloc(tls_instance_state->server.repl_backlog_size);
-        tls_instance_state->server.repl_backlog_histlen = 0;
-        tls_instance_state->server.repl_backlog_idx = 0;
+        zfree(server.repl_backlog);
+        server.repl_backlog = zmalloc(server.repl_backlog_size);
+        server.repl_backlog_histlen = 0;
+        server.repl_backlog_idx = 0;
         /* Next byte we have is... the next since the buffer is empty. */
-        tls_instance_state->server.repl_backlog_off = tls_instance_state->server.master_repl_offset+1;
+        server.repl_backlog_off = server.master_repl_offset+1;
     }
 }
 
 void freeReplicationBacklog(void) {
-    redisAssert(listLength(tls_instance_state->server.slaves) == 0);
-    zfree(tls_instance_state->server.repl_backlog);
-    tls_instance_state->server.repl_backlog = NULL;
+    redisAssert(listLength(server.slaves) == 0);
+    zfree(server.repl_backlog);
+    server.repl_backlog = NULL;
 }
 
 /* Add data to the replication backlog.
  * This function also increments the global replication offset stored at
- * tls_instance_state->server.master_repl_offset, because there is no case where we want to feed
+ * server.master_repl_offset, because there is no case where we want to feed
  * the backlog without incrementing the buffer. */
 void feedReplicationBacklog(void *ptr, size_t len) {
     unsigned char *p = ptr;
 
-    tls_instance_state->server.master_repl_offset += len;
+    server.master_repl_offset += len;
 
     /* This is a circular buffer, so write as much data we can at every
      * iteration and rewind the "idx" index if we reach the limit. */
     while(len) {
-        size_t thislen = tls_instance_state->server.repl_backlog_size - tls_instance_state->server.repl_backlog_idx;
+        size_t thislen = server.repl_backlog_size - server.repl_backlog_idx;
         if (thislen > len) thislen = len;
-        memcpy(tls_instance_state->server.repl_backlog+tls_instance_state->server.repl_backlog_idx,p,thislen);
-        tls_instance_state->server.repl_backlog_idx += thislen;
-        if (tls_instance_state->server.repl_backlog_idx == tls_instance_state->server.repl_backlog_size)
-            tls_instance_state->server.repl_backlog_idx = 0;
+        memcpy(server.repl_backlog+server.repl_backlog_idx,p,thislen);
+        server.repl_backlog_idx += thislen;
+        if (server.repl_backlog_idx == server.repl_backlog_size)
+            server.repl_backlog_idx = 0;
         len -= thislen;
         p += thislen;
-        tls_instance_state->server.repl_backlog_histlen += thislen;
+        server.repl_backlog_histlen += thislen;
     }
-    if (tls_instance_state->server.repl_backlog_histlen > tls_instance_state->server.repl_backlog_size)
-        tls_instance_state->server.repl_backlog_histlen = tls_instance_state->server.repl_backlog_size;
+    if (server.repl_backlog_histlen > server.repl_backlog_size)
+        server.repl_backlog_histlen = server.repl_backlog_size;
     /* Set the offset of the first byte we have in the backlog. */
-    tls_instance_state->server.repl_backlog_off = tls_instance_state->server.master_repl_offset -
-                              tls_instance_state->server.repl_backlog_histlen + 1;
+    server.repl_backlog_off = server.master_repl_offset -
+                              server.repl_backlog_histlen + 1;
 }
 
 /* Wrapper for feedReplicationBacklog() that takes Redis string objects
@@ -177,13 +177,13 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
 
     /* If there aren't slaves, and there is no backlog buffer to populate,
      * we can return ASAP. */
-    if (tls_instance_state->server.repl_backlog == NULL && listLength(slaves) == 0) return;
+    if (server.repl_backlog == NULL && listLength(slaves) == 0) return;
 
     /* We can't have slaves attached and no backlog. */
-    redisAssert(!(listLength(slaves) != 0 && tls_instance_state->server.repl_backlog == NULL));
+    redisAssert(!(listLength(slaves) != 0 && server.repl_backlog == NULL));
 
     /* Send SELECT command to every slave if needed. */
-    if (tls_instance_state->server.slaveseldb != dictid) {
+    if (server.slaveseldb != dictid) {
         robj *selectcmd;
 
         /* For a few DBs we have pre-computed SELECT command. */
@@ -200,7 +200,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
         }
 
         /* Add the SELECT command into the backlog. */
-        if (tls_instance_state->server.repl_backlog) feedReplicationBacklogWithObject(selectcmd);
+        if (server.repl_backlog) feedReplicationBacklogWithObject(selectcmd);
 
         /* Send it to slaves. */
         listRewind(slaves,&li);
@@ -212,10 +212,10 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
         if (dictid < 0 || dictid >= REDIS_SHARED_SELECT_CMDS)
             decrRefCount(selectcmd);
     }
-    tls_instance_state->server.slaveseldb = dictid;
+    server.slaveseldb = dictid;
 
     /* Write the command to the replication backlog if any. */
-    if (tls_instance_state->server.repl_backlog) {
+    if (server.repl_backlog) {
         char aux[REDIS_LONGSTR_SIZE+3];
 
         /* Add the multi bulk reply length. */
@@ -242,7 +242,7 @@ void replicationFeedSlaves(list *slaves, int dictid, robj **argv, int argc) {
     }
 
     /* Write the command to every slave. */
-    listRewind(tls_instance_state->server.slaves,&li);
+    listRewind(server.slaves,&li);
     while((ln = listNext(&li))) {
         redisClient *slave = ln->value;
 
@@ -276,7 +276,7 @@ void replicationFeedMonitors(redisClient *c, list *monitors, int dictid, robj **
     if (c->flags & REDIS_LUA_CLIENT) {
         cmdrepr = sdscatprintf(cmdrepr,"[%d lua] ",dictid);
     } else if (c->flags & REDIS_UNIX_SOCKET) {
-        cmdrepr = sdscatprintf(cmdrepr,"[%d unix:%s] ",dictid,tls_instance_state->server.unixsocket);
+        cmdrepr = sdscatprintf(cmdrepr,"[%d unix:%s] ",dictid,server.unixsocket);
     } else {
         cmdrepr = sdscatprintf(cmdrepr,"[%d %s] ",dictid,getClientPeerId(c));
     }
@@ -309,49 +309,49 @@ PORT_LONGLONG addReplyReplicationBacklog(redisClient *c, PORT_LONGLONG offset) {
 
     redisLog(REDIS_DEBUG, "[PSYNC] Slave request offset: %lld", offset);
 
-    if (tls_instance_state->server.repl_backlog_histlen == 0) {
+    if (server.repl_backlog_histlen == 0) {
         redisLog(REDIS_DEBUG, "[PSYNC] Backlog history len is zero");
         return 0;
     }
 
     redisLog(REDIS_DEBUG, "[PSYNC] Backlog size: %lld",
-             tls_instance_state->server.repl_backlog_size);
+             server.repl_backlog_size);
     redisLog(REDIS_DEBUG, "[PSYNC] First byte: %lld",
-             tls_instance_state->server.repl_backlog_off);
+             server.repl_backlog_off);
     redisLog(REDIS_DEBUG, "[PSYNC] History len: %lld",
-             tls_instance_state->server.repl_backlog_histlen);
+             server.repl_backlog_histlen);
     redisLog(REDIS_DEBUG, "[PSYNC] Current index: %lld",
-             tls_instance_state->server.repl_backlog_idx);
+             server.repl_backlog_idx);
 
     /* Compute the amount of bytes we need to discard. */
-    skip = offset - tls_instance_state->server.repl_backlog_off;
+    skip = offset - server.repl_backlog_off;
     redisLog(REDIS_DEBUG, "[PSYNC] Skipping: %lld", skip);
 
     /* Point j to the oldest byte, that is actaully our
-     * tls_instance_state->server.repl_backlog_off byte. */
-    j = (tls_instance_state->server.repl_backlog_idx +
-        (tls_instance_state->server.repl_backlog_size-tls_instance_state->server.repl_backlog_histlen)) %
-        tls_instance_state->server.repl_backlog_size;
+     * server.repl_backlog_off byte. */
+    j = (server.repl_backlog_idx +
+        (server.repl_backlog_size-server.repl_backlog_histlen)) %
+        server.repl_backlog_size;
     redisLog(REDIS_DEBUG, "[PSYNC] Index of first byte: %lld", j);
 
     /* Discard the amount of data to seek to the specified 'offset'. */
-    j = (j + skip) % tls_instance_state->server.repl_backlog_size;
+    j = (j + skip) % server.repl_backlog_size;
 
     /* Feed slave with data. Since it is a circular buffer we have to
      * split the reply in two parts if we are cross-boundary. */
-    len = tls_instance_state->server.repl_backlog_histlen - skip;
+    len = server.repl_backlog_histlen - skip;
     redisLog(REDIS_DEBUG, "[PSYNC] Reply total length: %lld", len);
     while(len) {
         PORT_LONGLONG thislen =
-            ((tls_instance_state->server.repl_backlog_size - j) < len) ?
-            (tls_instance_state->server.repl_backlog_size - j) : len;
+            ((server.repl_backlog_size - j) < len) ?
+            (server.repl_backlog_size - j) : len;
 
         redisLog(REDIS_DEBUG, "[PSYNC] addReply() length: %lld", thislen);
-        addReplySds(c,sdsnewlen(tls_instance_state->server.repl_backlog + j, thislen));
+        addReplySds(c,sdsnewlen(server.repl_backlog + j, thislen));
         len -= thislen;
         j = 0;
     }
-    return tls_instance_state->server.repl_backlog_histlen - skip;
+    return server.repl_backlog_histlen - skip;
 }
 
 /* This function handles the PSYNC command from the point of view of a
@@ -368,12 +368,12 @@ int masterTryPartialResynchronization(redisClient *c) {
     /* Is the runid of this master the same advertised by the wannabe slave
      * via PSYNC? If runid changed this master is a different instance and
      * there is no way to continue. */
-    if (strcasecmp(master_runid, tls_instance_state->server.runid)) {
+    if (strcasecmp(master_runid, server.runid)) {
         /* Run id "?" is used by slaves that want to force a full resync. */
         if (master_runid[0] != '?') {
             redisLog(REDIS_NOTICE,"Partial resynchronization not accepted: "
                 "Runid mismatch (Client asked for '%s', I'm '%s')",
-                master_runid, tls_instance_state->server.runid);
+                master_runid, server.runid);
         } else {
             redisLog(REDIS_NOTICE,"Full resync requested by slave %s",
                 replicationGetSlaveName(c));
@@ -384,13 +384,13 @@ int masterTryPartialResynchronization(redisClient *c) {
     /* We still have the data our slave is asking for? */
     if (getLongLongFromObjectOrReply(c,c->argv[2],&psync_offset,NULL) !=
        REDIS_OK) goto need_full_resync;
-    if (!tls_instance_state->server.repl_backlog ||
-        psync_offset < tls_instance_state->server.repl_backlog_off ||
-        psync_offset > (tls_instance_state->server.repl_backlog_off + tls_instance_state->server.repl_backlog_histlen))
+    if (!server.repl_backlog ||
+        psync_offset < server.repl_backlog_off ||
+        psync_offset > (server.repl_backlog_off + server.repl_backlog_histlen))
     {
         redisLog(REDIS_NOTICE,
             "Unable to partial resync with slave %s for lack of backlog (Slave request was: %lld).", replicationGetSlaveName(c), psync_offset);
-        if (psync_offset > tls_instance_state->server.master_repl_offset) {
+        if (psync_offset > server.master_repl_offset) {
             redisLog(REDIS_WARNING,
                 "Warning: slave %s tried to PSYNC with an offset that is greater than the master replication offset.", replicationGetSlaveName(c));
         }
@@ -403,9 +403,9 @@ int masterTryPartialResynchronization(redisClient *c) {
      * 3) Send the backlog data (from the offset to the end) to the slave. */
     c->flags |= REDIS_SLAVE;
     c->replstate = REDIS_REPL_ONLINE;
-    c->repl_ack_time = tls_instance_state->server.unixtime;
+    c->repl_ack_time = server.unixtime;
     c->repl_put_online_on_ack = 0;
-    listAddNodeTail(tls_instance_state->server.slaves,c);
+    listAddNodeTail(server.slaves,c);
     /* We can't use the connection buffers since they are used to accumulate
      * new commands at this stage. But we are sure the socket send buffer is
      * empty so this write will never fail actually. */
@@ -419,7 +419,7 @@ int masterTryPartialResynchronization(redisClient *c) {
         "Partial resynchronization request from %s accepted. Sending %lld bytes of backlog starting from offset %lld.",
             replicationGetSlaveName(c),
             psync_len, psync_offset);
-    /* Note that we don't need to set the selected DB at tls_instance_state->server.slaveseldb
+    /* Note that we don't need to set the selected DB at server.slaveseldb
      * to -1 to force the master to emit SELECT, since the slave already
      * has this state from the previous connection with the master. */
 
@@ -428,13 +428,13 @@ int masterTryPartialResynchronization(redisClient *c) {
 
 need_full_resync:
     /* We need a full resync for some reason... notify the client. */
-    psync_offset = tls_instance_state->server.master_repl_offset;
+    psync_offset = server.master_repl_offset;
     /* Add 1 to psync_offset if it the replication backlog does not exists
      * as when it will be created later we'll increment the offset by one. */
-    if (tls_instance_state->server.repl_backlog == NULL) psync_offset++;
+    if (server.repl_backlog == NULL) psync_offset++;
     /* Again, we can't use the connection buffers (see above). */
     buflen = snprintf(buf,sizeof(buf),"+FULLRESYNC %s %lld\r\n",
-                      tls_instance_state->server.runid,psync_offset);
+                      server.runid,psync_offset);
     if (write(c->fd,buf,buflen) != buflen) {
         freeClientAsync(c);
         return REDIS_OK;
@@ -451,12 +451,12 @@ int startBgsaveForReplication(void) {
     int retval;
 
     redisLog(REDIS_NOTICE,"Starting BGSAVE for SYNC with target: %s",
-        tls_instance_state->server.repl_diskless_sync ? "slaves sockets" : "disk");
+        server.repl_diskless_sync ? "slaves sockets" : "disk");
 
-    if (tls_instance_state->server.repl_diskless_sync)
+    if (server.repl_diskless_sync)
         retval = rdbSaveToSlavesSockets();
     else
-        retval = rdbSaveBackground(tls_instance_state->server.rdb_filename);
+        retval = rdbSaveBackground(server.rdb_filename);
 
     /* Flush the script cache, since we need that slave differences are
      * accumulated without requiring slaves to match our cached scripts. */
@@ -471,7 +471,7 @@ void syncCommand(redisClient *c) {
 
     /* Refuse SYNC requests if we are a slave but the link with our master
      * is not ok... */
-    if (tls_instance_state->server.masterhost && tls_instance_state->server.repl_state != REDIS_REPL_CONNECTED) {
+    if (server.masterhost && server.repl_state != REDIS_REPL_CONNECTED) {
         addReplyError(c,"Can't SYNC while not connected with my master");
         return;
     }
@@ -499,7 +499,7 @@ void syncCommand(redisClient *c) {
      * if the connection with the master is lost. */
     if (!strcasecmp(c->argv[0]->ptr,"psync")) {
         if (masterTryPartialResynchronization(c) == REDIS_OK) {
-            tls_instance_state->server.stat_sync_partial_ok++;
+            server.stat_sync_partial_ok++;
             return; /* No full resync needed, return. */
         } else {
             char *master_runid = c->argv[1]->ptr;
@@ -508,7 +508,7 @@ void syncCommand(redisClient *c) {
              * runid is not "?", as this is used by slaves to force a full
              * resync on purpose when they are not albe to partially
              * resync. */
-            if (master_runid[0] != '?') tls_instance_state->server.stat_sync_partial_err++;
+            if (master_runid[0] != '?') server.stat_sync_partial_err++;
         }
     } else {
         /* If a slave uses SYNC, we are dealing with an old implementation
@@ -518,12 +518,12 @@ void syncCommand(redisClient *c) {
     }
 
     /* Full resynchronization. */
-    tls_instance_state->server.stat_sync_full++;
+    server.stat_sync_full++;
 
     /* Here we need to check if there is a background saving operation
      * in progress, or if it is required to start one */
-    if (tls_instance_state->server.rdb_child_pid != -1 &&
-        tls_instance_state->server.rdb_child_type == REDIS_RDB_CHILD_TYPE_DISK)
+    if (server.rdb_child_pid != -1 &&
+        server.rdb_child_type == REDIS_RDB_CHILD_TYPE_DISK)
     {
         /* Ok a background save is in progress. Let's check if it is a good
          * one for replication, i.e. if there is another slave that is
@@ -532,7 +532,7 @@ void syncCommand(redisClient *c) {
         listNode *ln;
         listIter li;
 
-        listRewind(tls_instance_state->server.slaves,&li);
+        listRewind(server.slaves,&li);
         while((ln = listNext(&li))) {
             slave = ln->value;
             if (slave->replstate == REDIS_REPL_WAIT_BGSAVE_END) break;
@@ -549,8 +549,8 @@ void syncCommand(redisClient *c) {
             c->replstate = REDIS_REPL_WAIT_BGSAVE_START;
             redisLog(REDIS_NOTICE,"Waiting for next BGSAVE for SYNC");
         }
-    } else if (tls_instance_state->server.rdb_child_pid != -1 &&
-               tls_instance_state->server.rdb_child_type == REDIS_RDB_CHILD_TYPE_SOCKET)
+    } else if (server.rdb_child_pid != -1 &&
+               server.rdb_child_type == REDIS_RDB_CHILD_TYPE_SOCKET)
     {
         /* There is an RDB child process but it is writing directly to
          * children sockets. We need to wait for the next BGSAVE
@@ -558,12 +558,12 @@ void syncCommand(redisClient *c) {
         c->replstate = REDIS_REPL_WAIT_BGSAVE_START;
         redisLog(REDIS_NOTICE,"Waiting for next BGSAVE for SYNC");
     } else {
-        if (tls_instance_state->server.repl_diskless_sync) {
+        if (server.repl_diskless_sync) {
             /* Diskless replication RDB child is created inside
              * replicationCron() since we want to delay its start a
              * few seconds to wait for more slaves to arrive. */
             c->replstate = REDIS_REPL_WAIT_BGSAVE_START;
-            if (tls_instance_state->server.repl_diskless_sync_delay)
+            if (server.repl_diskless_sync_delay)
                 redisLog(REDIS_NOTICE,"Delay next BGSAVE for SYNC");
         } else {
             /* Ok we don't have a BGSAVE in progress, let's start one. */
@@ -576,13 +576,13 @@ void syncCommand(redisClient *c) {
         }
     }
 
-    if (tls_instance_state->server.repl_disable_tcp_nodelay)
+    if (server.repl_disable_tcp_nodelay)
         anetDisableTcpNoDelay(NULL, c->fd); /* Non critical if it fails. */
     c->repldbfd = -1;
     c->flags |= REDIS_SLAVE;
-    tls_instance_state->server.slaveseldb = -1; /* Force to re-emit the SELECT command. */
-    listAddNodeTail(tls_instance_state->server.slaves,c);
-    if (listLength(tls_instance_state->server.slaves) == 1 && tls_instance_state->server.repl_backlog == NULL)
+    server.slaveseldb = -1; /* Force to re-emit the SELECT command. */
+    listAddNodeTail(server.slaves,c);
+    if (listLength(server.slaves) == 1 && server.repl_backlog == NULL)
         createReplicationBacklog();
     return;
 }
@@ -629,7 +629,7 @@ void replconfCommand(redisClient *c) {
                 return;
             if (offset > c->repl_ack_off)
                 c->repl_ack_off = offset;
-            c->repl_ack_time = tls_instance_state->server.unixtime;
+            c->repl_ack_time = server.unixtime;
             /* If this was a diskless replication, we need to really put
              * the slave online when the first ACK is received (which
              * confirms slave is online and ready to get more data). */
@@ -660,8 +660,8 @@ void replconfCommand(redisClient *c) {
 void putSlaveOnline(redisClient *slave) {
     slave->replstate = REDIS_REPL_ONLINE;
     slave->repl_put_online_on_ack = 0;
-    slave->repl_ack_time = tls_instance_state->server.unixtime;
-    if (aeCreateFileEvent(tls_instance_state->server.el, slave->fd, AE_WRITABLE,
+    slave->repl_ack_time = server.unixtime;
+    if (aeCreateFileEvent(server.el, slave->fd, AE_WRITABLE,
         sendReplyToClient, slave) == AE_ERR) {
         redisLog(REDIS_WARNING,"Unable to register writable event for slave bulk transfer: %s", strerror(errno));
         freeClient(slave);
@@ -696,10 +696,10 @@ void sendBulkToSlaveDataDone(aeEventLoop *el, int fd, void *privdata, int nwritt
         memset(slave->replFileCopy, 0, MAX_PATH);
 #endif
         slave->repldbfd = -1;
-        aeDeleteFileEvent(tls_instance_state->server.el,slave->fd,AE_WRITABLE);
+        aeDeleteFileEvent(server.el,slave->fd,AE_WRITABLE);
         slave->replstate = REDIS_REPL_ONLINE;
-        slave->repl_ack_time = tls_instance_state->server.unixtime;
-        if (aeCreateFileEvent(tls_instance_state->server.el, slave->fd, AE_WRITABLE,
+        slave->repl_ack_time = server.unixtime;
+        if (aeCreateFileEvent(server.el, slave->fd, AE_WRITABLE,
             sendReplyToClient, slave) == AE_ERR) {
             freeClient(slave);
             return;
@@ -773,7 +773,7 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
             freeClient(slave);
             return;
         }
-        tls_instance_state->server.stat_net_output_bytes += nwritten;
+        server.stat_net_output_bytes += nwritten;
         sdsrange(slave->replpreamble,nwritten,-1);
         if (sdslen(slave->replpreamble) == 0) {
             sdsfree(slave->replpreamble);
@@ -802,11 +802,11 @@ void sendBulkToSlave(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
     slave->repldboff += nwritten;
-    tls_instance_state->server.stat_net_output_bytes += nwritten;
+    server.stat_net_output_bytes += nwritten;
     if (slave->repldboff == slave->repldbsize) {
         close(slave->repldbfd);
         slave->repldbfd = -1;
-        aeDeleteFileEvent(tls_instance_state->server.el,slave->fd,AE_WRITABLE);
+        aeDeleteFileEvent(server.el,slave->fd,AE_WRITABLE);
         putSlaveOnline(slave);
     }
 }
@@ -831,7 +831,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
     int startbgsave = 0;
     listIter li;
 
-    listRewind(tls_instance_state->server.slaves,&li);
+    listRewind(server.slaves,&li);
     while((ln = listNext(&li))) {
         redisClient *slave = ln->value;
 
@@ -857,7 +857,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
                  * is technically online now. */
                 slave->replstate = REDIS_REPL_ONLINE;
                 slave->repl_put_online_on_ack = 1;
-                slave->repl_ack_time = tls_instance_state->server.unixtime;
+                slave->repl_ack_time = server.unixtime;
             } else {
                 if (bgsaveerr != REDIS_OK) {
                     freeClient(slave);
@@ -871,8 +871,8 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
                    I don't think this patch totally eliminates the race condition, but it does eliminate the deadlock 
                    that occurs when the forked process tries to copy the file it produces over the the RDB file being 
                    held open by the slave feeding code. */
-                sprintf(slave->replFileCopy,"%d_%s",  slave->fd, tls_instance_state->server.rdb_filename);
-                if(CopyFileA( tls_instance_state->server.rdb_filename, slave->replFileCopy, FALSE) == FALSE) {
+                sprintf(slave->replFileCopy,"%d_%s",  slave->fd, server.rdb_filename);
+                if(CopyFileA( server.rdb_filename, slave->replFileCopy, FALSE) == FALSE) {
                     freeClient(slave);
                     redisLog(REDIS_WARNING,"Failed to duplicate RDB file. Failing SYNC: %d", GetLastError());
                     continue;
@@ -880,7 +880,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
 
                 if ((slave->repldbfd = open(slave->replFileCopy,O_RDONLY|_O_BINARY,0)) == -1 ||
 #else
-                if ((slave->repldbfd = open(tls_instance_state->server.rdb_filename,O_RDONLY)) == -1 ||
+                if ((slave->repldbfd = open(server.rdb_filename,O_RDONLY)) == -1 ||
 #endif
                     redis_fstat(slave->repldbfd,&buf) == -1) {
                     freeClient(slave);
@@ -893,8 +893,8 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
                 slave->replpreamble = sdscatprintf(sdsempty(),"$%lld\r\n",
                     (PORT_ULONGLONG) slave->repldbsize);
 
-                aeDeleteFileEvent(tls_instance_state->server.el,slave->fd,AE_WRITABLE);
-                if (aeCreateFileEvent(tls_instance_state->server.el, slave->fd, AE_WRITABLE, sendBulkToSlave, slave) == AE_ERR) {
+                aeDeleteFileEvent(server.el,slave->fd,AE_WRITABLE);
+                if (aeCreateFileEvent(server.el, slave->fd, AE_WRITABLE, sendBulkToSlave, slave) == AE_ERR) {
                     freeClient(slave);
                     continue;
                 }
@@ -905,7 +905,7 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
         if (startBgsaveForReplication() != REDIS_OK) {
             listIter li;
 
-            listRewind(tls_instance_state->server.slaves,&li);
+            listRewind(server.slaves,&li);
             redisLog(REDIS_WARNING,"SYNC failed. BGSAVE failed");
             while((ln = listNext(&li))) {
                 redisClient *slave = ln->value;
@@ -921,22 +921,22 @@ void updateSlavesWaitingBgsave(int bgsaveerr, int type) {
 
 /* Abort the async download of the bulk dataset while SYNC-ing with master */
 void replicationAbortSyncTransfer(void) {
-    redisAssert(tls_instance_state->server.repl_state == REDIS_REPL_TRANSFER);
+    redisAssert(server.repl_state == REDIS_REPL_TRANSFER);
 
-    aeDeleteFileEvent(tls_instance_state->server.el,tls_instance_state->server.repl_transfer_s,AE_READABLE);
-    close(tls_instance_state->server.repl_transfer_s);
-    close(tls_instance_state->server.repl_transfer_fd);
+    aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
+    close(server.repl_transfer_s);
+    close(server.repl_transfer_fd);
 #ifdef WIN32_IOCP
-    if (tls_instance_state->server.repl_transfer_tmpfile != NULL) {
-        unlink(tls_instance_state->server.repl_transfer_tmpfile);
-        zfree(tls_instance_state->server.repl_transfer_tmpfile);
-        tls_instance_state->server.repl_transfer_tmpfile = NULL;
+    if (server.repl_transfer_tmpfile != NULL) {
+        unlink(server.repl_transfer_tmpfile);
+        zfree(server.repl_transfer_tmpfile);
+        server.repl_transfer_tmpfile = NULL;
     }
 #else
-    unlink(tls_instance_state->server.repl_transfer_tmpfile);
-    zfree(tls_instance_state->server.repl_transfer_tmpfile);
+    unlink(server.repl_transfer_tmpfile);
+    zfree(server.repl_transfer_tmpfile);
 #endif
-    tls_instance_state->server.repl_state = REDIS_REPL_CONNECT;
+    server.repl_state = REDIS_REPL_CONNECT;
 }
 
 /* Avoid the master to detect the slave is timing out while loading the
@@ -951,7 +951,7 @@ void replicationSendNewlineToMaster(void) {
     static time_t newline_sent;
     if (time(NULL) != newline_sent) {
         newline_sent = time(NULL);
-        if (write(tls_instance_state->server.repl_transfer_s,"\n",1) == -1) {
+        if (write(server.repl_transfer_s,"\n",1) == -1) {
             /* Pinging back in this stage is best-effort. */
         }
     }
@@ -982,8 +982,8 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     /* If repl_transfer_size == -1 we still have to read the bulk length
      * from the master reply. */
-    if (tls_instance_state->server.repl_transfer_size == -1) {
-        if (syncReadLine(fd,buf,1024,tls_instance_state->server.repl_syncio_timeout*1000) == -1) {
+    if (server.repl_transfer_size == -1) {
+        if (syncReadLine(fd,buf,1024,server.repl_syncio_timeout*1000) == -1) {
             redisLog(REDIS_WARNING,
                 "I/O error reading bulk count from MASTER: %s",
                 strerror(errno));
@@ -1002,7 +1002,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
             /* At this stage just a newline works as a PING in order to take
              * the connection live. So we refresh our last interaction
              * timestamp. */
-            tls_instance_state->server.repl_transfer_lastio = tls_instance_state->server.unixtime;
+            server.repl_transfer_lastio = server.unixtime;
             return;
         } else if (buf[0] != '$') {
             redisLog(REDIS_WARNING,"Bad protocol from MASTER, the first byte is not '$' (we received '%s'), are you sure the host and port are right?", buf);
@@ -1025,15 +1025,15 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
             memset(lastbytes,0,REDIS_RUN_ID_SIZE);
             /* Set any repl_transfer_size to avoid entering this code path
              * at the next call. */
-            tls_instance_state->server.repl_transfer_size = 0;
+            server.repl_transfer_size = 0;
             redisLog(REDIS_NOTICE,
                 "MASTER <-> SLAVE sync: receiving streamed RDB from master");
         } else {
             usemark = 0;
-            tls_instance_state->server.repl_transfer_size = IF_WIN32(strtoll,strtol)(buf+1,NULL,10);  /* BUGBUG: verify for 32bit support */
+            server.repl_transfer_size = IF_WIN32(strtoll,strtol)(buf+1,NULL,10);  /* BUGBUG: verify for 32bit support */
             redisLog(REDIS_NOTICE,
                 "MASTER <-> SLAVE sync: receiving %lld bytes from master",
-                (PORT_LONGLONG) tls_instance_state->server.repl_transfer_size);
+                (PORT_LONGLONG) server.repl_transfer_size);
         }
         return;
     }
@@ -1042,23 +1042,23 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (usemark) {
         readlen = sizeof(buf);
     } else {
-        left = tls_instance_state->server.repl_transfer_size - tls_instance_state->server.repl_transfer_read;
+        left = server.repl_transfer_size - server.repl_transfer_read;
         readlen = (left < (signed)sizeof(buf)) ? left : (signed)sizeof(buf);
     }
 
 #ifdef WIN32_IOCP
     nread = read(fd,buf,readlen);
     if (nread <= 0) {
-        if (tls_instance_state->server.repl_transfer_size) {
+        if (server.repl_transfer_size) {
             errno = WSAGetLastError();
 #ifdef _WIN64
             redisLog(REDIS_WARNING,"I/O error %d (left %lld) trying to sync with MASTER: %s",
-                errno, tls_instance_state->server.repl_transfer_size,
+                errno, server.repl_transfer_size,
                 (nread == -1) ? wsa_strerror(errno) : "connection lost");
         }
 #else
             redisLog(REDIS_WARNING,"I/O error %d (left %d) trying to sync with MASTER: %s",
-                errno, tls_instance_state->server.repl_transfer_size,
+                errno, server.repl_transfer_size,
                 (nread == -1) ? wsa_strerror(errno) : "connection lost");
         }
 #endif
@@ -1075,7 +1075,7 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
         return;
     }
 #endif
-    tls_instance_state->server.stat_net_input_bytes += nread;
+    server.stat_net_input_bytes += nread;
 
     /* When a mark is used, we want to detect EOF asap in order to avoid
      * writing the EOF mark into the file... */
@@ -1093,17 +1093,17 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
         if (memcmp(lastbytes,eofmark,REDIS_RUN_ID_SIZE) == 0) eof_reached = 1;
     }
 
-    tls_instance_state->server.repl_transfer_lastio = tls_instance_state->server.unixtime;
-    if (write(tls_instance_state->server.repl_transfer_fd,buf,nread) != nread) {
+    server.repl_transfer_lastio = server.unixtime;
+    if (write(server.repl_transfer_fd,buf,nread) != nread) {
         redisLog(REDIS_WARNING,"Write error or short write writing to the DB dump file needed for MASTER <-> SLAVE synchronization: %s", strerror(errno));
         goto error;
     }
-    tls_instance_state->server.repl_transfer_read += nread;
+    server.repl_transfer_read += nread;
 
     /* Delete the last 40 bytes from the file if we reached EOF. */
     if (usemark && eof_reached) {
-        if (ftruncate(tls_instance_state->server.repl_transfer_fd,
-            tls_instance_state->server.repl_transfer_read - REDIS_RUN_ID_SIZE) == -1)
+        if (ftruncate(server.repl_transfer_fd,
+            server.repl_transfer_read - REDIS_RUN_ID_SIZE) == -1)
         {
             redisLog(REDIS_WARNING,"Error truncating the RDB file received from the master for SYNC: %s", strerror(errno));
             goto error;
@@ -1113,29 +1113,29 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
     /* Sync data on disk from time to time, otherwise at the end of the transfer
      * we may suffer a big delay as the memory buffers are copied into the
      * actual disk. */
-    if (tls_instance_state->server.repl_transfer_read >=
-        tls_instance_state->server.repl_transfer_last_fsync_off + REPL_MAX_WRITTEN_BEFORE_FSYNC)
+    if (server.repl_transfer_read >=
+        server.repl_transfer_last_fsync_off + REPL_MAX_WRITTEN_BEFORE_FSYNC)
     {
-        off_t sync_size = tls_instance_state->server.repl_transfer_read -
-                          tls_instance_state->server.repl_transfer_last_fsync_off;
-        rdb_fsync_range(tls_instance_state->server.repl_transfer_fd,
-            tls_instance_state->server.repl_transfer_last_fsync_off, sync_size);
-        tls_instance_state->server.repl_transfer_last_fsync_off += sync_size;
+        off_t sync_size = server.repl_transfer_read -
+                          server.repl_transfer_last_fsync_off;
+        rdb_fsync_range(server.repl_transfer_fd,
+            server.repl_transfer_last_fsync_off, sync_size);
+        server.repl_transfer_last_fsync_off += sync_size;
     }
 
     /* Check if the transfer is now complete */
     if (!usemark) {
-        if (tls_instance_state->server.repl_transfer_read == tls_instance_state->server.repl_transfer_size)
+        if (server.repl_transfer_read == server.repl_transfer_size)
             eof_reached = 1;
     }
 
     if (eof_reached) {
 #ifdef _WIN32
         /* Close temp, since rename is unable to delete open file */
-        close(tls_instance_state->server.repl_transfer_fd);
-        tls_instance_state->server.repl_transfer_fd = -1;
+        close(server.repl_transfer_fd);
+        server.repl_transfer_fd = -1;
 #endif
-        if (rename(tls_instance_state->server.repl_transfer_tmpfile,tls_instance_state->server.rdb_filename) == -1) {
+        if (rename(server.repl_transfer_tmpfile,server.rdb_filename) == -1) {
             redisLog(REDIS_WARNING,"Failed trying to rename the temp DB into dump.rdb in MASTER <-> SLAVE synchronization: %s", strerror(errno));
             replicationAbortSyncTransfer();
             return;
@@ -1147,37 +1147,37 @@ void readSyncBulkPayload(aeEventLoop *el, int fd, void *privdata, int mask) {
          * handler, otherwise it will get called recursively since
          * rdbLoad() will call the event loop to process events from time to
          * time for non blocking loading. */
-        aeDeleteFileEvent(tls_instance_state->server.el,tls_instance_state->server.repl_transfer_s,AE_READABLE);
+        aeDeleteFileEvent(server.el,server.repl_transfer_s,AE_READABLE);
         redisLog(REDIS_NOTICE, "MASTER <-> SLAVE sync: Loading DB in memory");
-        if (rdbLoad(tls_instance_state->server.rdb_filename) != REDIS_OK) {
+        if (rdbLoad(server.rdb_filename) != REDIS_OK) {
             redisLog(REDIS_WARNING,"Failed trying to load the MASTER synchronization DB from disk");
             replicationAbortSyncTransfer();
             return;
         }
         /* Final setup of the connected slave <- master link */
-        zfree(tls_instance_state->server.repl_transfer_tmpfile);
+        zfree(server.repl_transfer_tmpfile);
 #ifdef _WIN32
-        tls_instance_state->server.repl_transfer_tmpfile = NULL;
+        server.repl_transfer_tmpfile = NULL;
 #else
         /* Moved before rename tmp->db in windows */
-        close(tls_instance_state->server.repl_transfer_fd);
+        close(server.repl_transfer_fd);
 #endif
-        tls_instance_state->server.master = createClient(tls_instance_state->server.repl_transfer_s);
-        tls_instance_state->server.master->flags |= REDIS_MASTER;
-        tls_instance_state->server.master->authenticated = 1;
-        tls_instance_state->server.repl_state = REDIS_REPL_CONNECTED;
-        tls_instance_state->server.master->reploff = tls_instance_state->server.repl_master_initial_offset;
-        memcpy(tls_instance_state->server.master->replrunid, tls_instance_state->server.repl_master_runid,
-            sizeof(tls_instance_state->server.repl_master_runid));
+        server.master = createClient(server.repl_transfer_s);
+        server.master->flags |= REDIS_MASTER;
+        server.master->authenticated = 1;
+        server.repl_state = REDIS_REPL_CONNECTED;
+        server.master->reploff = server.repl_master_initial_offset;
+        memcpy(server.master->replrunid, server.repl_master_runid,
+            sizeof(server.repl_master_runid));
         /* If master offset is set to -1, this master is old and is not
          * PSYNC capable, so we flag it accordingly. */
-        if (tls_instance_state->server.master->reploff == -1)
-            tls_instance_state->server.master->flags |= REDIS_PRE_PSYNC;
+        if (server.master->reploff == -1)
+            server.master->flags |= REDIS_PRE_PSYNC;
         redisLog(REDIS_NOTICE, "MASTER <-> SLAVE sync: Finished with success");
         /* Restart the AOF subsystem now that we finished the sync. This
          * will trigger an AOF rewrite, and when done will start appending
          * to the new file. */
-        if (tls_instance_state->server.aof_state != REDIS_AOF_OFF) {
+        if (server.aof_state != REDIS_AOF_OFF) {
             int retry = 10;
 
             stopAppendOnly();
@@ -1222,16 +1222,16 @@ char *sendSynchronousCommand(int fd, ...) {
     }
     cmd = sdscatlen(cmd,"\r\n",2);
 
-    /* Transfer command to the tls_instance_state->server. */
-    if (syncWrite(fd,cmd,(ssize_t)sdslen(cmd),tls_instance_state->server.repl_syncio_timeout*1000) == -1) {
+    /* Transfer command to the server. */
+    if (syncWrite(fd,cmd,(ssize_t)sdslen(cmd),server.repl_syncio_timeout*1000) == -1) {
         sdsfree(cmd);
         return sdscatprintf(sdsempty(),"-Writing to master: %s",
                 strerror(errno));
     }
     sdsfree(cmd);
 
-    /* Read the reply from the tls_instance_state->server. */
-    if (syncReadLine(fd,buf,sizeof(buf),tls_instance_state->server.repl_syncio_timeout*1000) == -1)
+    /* Read the reply from the server. */
+    if (syncReadLine(fd,buf,sizeof(buf),server.repl_syncio_timeout*1000) == -1)
     {
         return sdscatprintf(sdsempty(),"-Reading from master: %s",
                 strerror(errno));
@@ -1251,7 +1251,7 @@ char *sendSynchronousCommand(int fd, ...) {
  * 1) We pass the function an already connected socket "fd".
  * 2) This function does not close the file descriptor "fd". However in case
  *    of successful partial resynchronization, the function will reuse
- *    'fd' as file descriptor of the tls_instance_state->server.master client structure.
+ *    'fd' as file descriptor of the server.master client structure.
  *
  * The function returns:
  *
@@ -1275,12 +1275,12 @@ int slaveTryPartialResynchronization(int fd) {
      * master run_id and offset as not valid. Later if we'll be able to do
      * a FULL resync using the PSYNC command we'll set the offset at the
      * right value, so that this information will be propagated to the
-     * client structure representing the master into tls_instance_state->server.master. */
-    tls_instance_state->server.repl_master_initial_offset = -1;
+     * client structure representing the master into server.master. */
+    server.repl_master_initial_offset = -1;
 
-    if (tls_instance_state->server.cached_master) {
-        psync_runid = tls_instance_state->server.cached_master->replrunid;
-        snprintf(psync_offset,sizeof(psync_offset),"%lld", tls_instance_state->server.cached_master->reploff+1);
+    if (server.cached_master) {
+        psync_runid = server.cached_master->replrunid;
+        snprintf(psync_offset,sizeof(psync_offset),"%lld", server.cached_master->reploff+1);
         redisLog(REDIS_NOTICE,"Trying a partial resynchronization (request %s:%s).", psync_runid, psync_offset);
     } else {
         redisLog(REDIS_NOTICE,"Partial resynchronization not possible (no cached master)");
@@ -1309,14 +1309,14 @@ int slaveTryPartialResynchronization(int fd) {
              * reply means that the master supports PSYNC, but the reply
              * format seems wrong. To stay safe we blank the master
              * runid to make sure next PSYNCs will fail. */
-            memset(tls_instance_state->server.repl_master_runid,0,REDIS_RUN_ID_SIZE+1);
+            memset(server.repl_master_runid,0,REDIS_RUN_ID_SIZE+1);
         } else {
-            memcpy(tls_instance_state->server.repl_master_runid, runid, offset-runid-1);
-            tls_instance_state->server.repl_master_runid[REDIS_RUN_ID_SIZE] = '\0';
-            tls_instance_state->server.repl_master_initial_offset = strtoll(offset,NULL,10);
+            memcpy(server.repl_master_runid, runid, offset-runid-1);
+            server.repl_master_runid[REDIS_RUN_ID_SIZE] = '\0';
+            server.repl_master_initial_offset = strtoll(offset,NULL,10);
             redisLog(REDIS_NOTICE,"Full resync from master: %s:%lld",
-                tls_instance_state->server.repl_master_runid,
-                tls_instance_state->server.repl_master_initial_offset);
+                server.repl_master_runid,
+                server.repl_master_initial_offset);
         }
         /* We are going to full resync, discard the cached master structure. */
         replicationDiscardCachedMaster();
@@ -1362,7 +1362,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
 
     /* If this event fired after the user turned the instance into a master
      * with SLAVEOF NO ONE we must just return ASAP. */
-    if (tls_instance_state->server.repl_state == REDIS_REPL_NONE) {
+    if (server.repl_state == REDIS_REPL_NONE) {
         close(fd);
         return;
     }
@@ -1371,7 +1371,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (char*)&sockerr, &errlen) == -1)
         sockerr = errno;
     if (sockerr) {
-        aeDeleteFileEvent(tls_instance_state->server.el,fd,AE_READABLE|AE_WRITABLE);
+        aeDeleteFileEvent(server.el,fd,AE_READABLE|AE_WRITABLE);
         redisLog(REDIS_WARNING,"Error condition on socket for SYNC: %s",
             strerror(sockerr));
         goto error;
@@ -1381,12 +1381,12 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
      * make sure the master is able to reply before going into the actual
      * replication process where we have long timeouts in the order of
      * seconds (in the meantime the slave would block). */
-    if (tls_instance_state->server.repl_state == REDIS_REPL_CONNECTING) {
+    if (server.repl_state == REDIS_REPL_CONNECTING) {
         redisLog(REDIS_NOTICE,"Non blocking connect for SYNC fired the event.");
         /* Delete the writable event so that the readable event remains
          * registered and we can wait for the PONG reply. */
-        aeDeleteFileEvent(tls_instance_state->server.el,fd,AE_WRITABLE);
-        tls_instance_state->server.repl_state = REDIS_REPL_RECEIVE_PONG;
+        aeDeleteFileEvent(server.el,fd,AE_WRITABLE);
+        server.repl_state = REDIS_REPL_RECEIVE_PONG;
         /* Send the PING, don't check for errors at all, we have the timeout
          * that will take care about this. */
         syncWrite(fd,"PING\r\n",6,100);
@@ -1394,17 +1394,17 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* Receive the PONG command. */
-    if (tls_instance_state->server.repl_state == REDIS_REPL_RECEIVE_PONG) {
+    if (server.repl_state == REDIS_REPL_RECEIVE_PONG) {
         char buf[1024];
 
         /* Delete the readable event, we no longer need it now that there is
          * the PING reply to read. */
-        aeDeleteFileEvent(tls_instance_state->server.el,fd,AE_READABLE);
+        aeDeleteFileEvent(server.el,fd,AE_READABLE);
 
         /* Read the reply with explicit timeout. */
         buf[0] = '\0';
         if (syncReadLine(fd,buf,sizeof(buf),
-            tls_instance_state->server.repl_syncio_timeout*1000) == -1)
+            server.repl_syncio_timeout*1000) == -1)
         {
             redisLog(REDIS_WARNING,
                 "I/O error reading PING reply from master: %s",
@@ -1430,8 +1430,8 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* AUTH with the master if required. */
-    if(tls_instance_state->server.masterauth) {
-        err = sendSynchronousCommand(fd,"AUTH",tls_instance_state->server.masterauth,NULL);
+    if(server.masterauth) {
+        err = sendSynchronousCommand(fd,"AUTH",server.masterauth,NULL);
         if (err[0] == '-') {
             redisLog(REDIS_WARNING,"Unable to AUTH to MASTER: %s",err);
             sdsfree(err);
@@ -1443,7 +1443,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     /* Set the slave port, so that Master's INFO command can list the
      * slave listening port correctly. */
     {
-        sds port = sdsfromlonglong(tls_instance_state->server.port);
+        sds port = sdsfromlonglong(server.port);
         err = sendSynchronousCommand(fd,"REPLCONF","listening-port",port,
                                          NULL);
         sdsfree(port);
@@ -1467,11 +1467,11 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* Fall back to SYNC if needed. Otherwise psync_result == PSYNC_FULLRESYNC
-     * and the tls_instance_state->server.repl_master_runid and repl_master_initial_offset are
+     * and the server.repl_master_runid and repl_master_initial_offset are
      * already populated. */
     if (psync_result == PSYNC_NOT_SUPPORTED) {
         redisLog(REDIS_NOTICE,"Retrying with SYNC...");
-        if (syncWrite(fd,"SYNC\r\n",6,tls_instance_state->server.repl_syncio_timeout*1000) == -1) {
+        if (syncWrite(fd,"SYNC\r\n",6,server.repl_syncio_timeout*1000) == -1) {
             redisLog(REDIS_WARNING,"I/O error writing to MASTER: %s",
                 strerror(errno));
             goto error;
@@ -1482,11 +1482,11 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     while(maxtries--) {
 #ifdef _WIN32
         snprintf(tmpfile,256,
-            "temp-%lld.%lld.rdb", (PORT_LONGLONG) tls_instance_state->server.unixtime, (PORT_LONGLONG) getpid()); /* BUGBUG: fix it! */
+            "temp-%lld.%lld.rdb", (PORT_LONGLONG) server.unixtime, (PORT_LONGLONG) getpid()); /* BUGBUG: fix it! */
         dfd = open(tmpfile,O_CREAT|O_WRONLY|O_EXCL|O_BINARY,_S_IREAD|_S_IWRITE);
 #else
         snprintf(tmpfile,256,
-            "temp-%d.%ld.rdb",(int)tls_instance_state->server.unixtime,(long int)getpid());
+            "temp-%d.%ld.rdb",(int)server.unixtime,(long int)getpid());
         dfd = open(tmpfile,O_CREAT|O_WRONLY|O_EXCL,0644);
 #endif
         if (dfd != -1) break;
@@ -1498,7 +1498,7 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* Setup the non blocking download of the bulk file. */
-    if (aeCreateFileEvent(tls_instance_state->server.el,fd, AE_READABLE,readSyncBulkPayload,NULL)
+    if (aeCreateFileEvent(server.el,fd, AE_READABLE,readSyncBulkPayload,NULL)
             == AE_ERR)
     {
         redisLog(REDIS_WARNING,
@@ -1507,33 +1507,33 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
         goto error;
     }
 
-    tls_instance_state->server.repl_state = REDIS_REPL_TRANSFER;
-    tls_instance_state->server.repl_transfer_size = -1;
-    tls_instance_state->server.repl_transfer_read = 0;
-    tls_instance_state->server.repl_transfer_last_fsync_off = 0;
-    tls_instance_state->server.repl_transfer_fd = dfd;
-    tls_instance_state->server.repl_transfer_lastio = tls_instance_state->server.unixtime;
-    tls_instance_state->server.repl_transfer_tmpfile = zstrdup(tmpfile);
+    server.repl_state = REDIS_REPL_TRANSFER;
+    server.repl_transfer_size = -1;
+    server.repl_transfer_read = 0;
+    server.repl_transfer_last_fsync_off = 0;
+    server.repl_transfer_fd = dfd;
+    server.repl_transfer_lastio = server.unixtime;
+    server.repl_transfer_tmpfile = zstrdup(tmpfile);
     return;
 
 error:
     close(fd);
-    tls_instance_state->server.repl_transfer_s = -1;
-    tls_instance_state->server.repl_state = REDIS_REPL_CONNECT;
+    server.repl_transfer_s = -1;
+    server.repl_state = REDIS_REPL_CONNECT;
     return;
 }
 
 int connectWithMaster(void) {
     int fd;
 
-    fd = anetTcpNonBlockConnect(NULL,tls_instance_state->server.masterhost,tls_instance_state->server.masterport);
+    fd = anetTcpNonBlockConnect(NULL,server.masterhost,server.masterport);
     if (fd == -1) {
         redisLog(REDIS_WARNING,"Unable to connect to MASTER: %s",
             strerror(errno));
         return REDIS_ERR;
     }
 
-    if (aeCreateFileEvent(tls_instance_state->server.el,fd,AE_READABLE|AE_WRITABLE,syncWithMaster,NULL) ==
+    if (aeCreateFileEvent(server.el,fd,AE_READABLE|AE_WRITABLE,syncWithMaster,NULL) ==
             AE_ERR)
     {
         close(fd);
@@ -1541,23 +1541,23 @@ int connectWithMaster(void) {
         return REDIS_ERR;
     }
 
-    tls_instance_state->server.repl_transfer_lastio = tls_instance_state->server.unixtime;
-    tls_instance_state->server.repl_transfer_s = fd;
-    tls_instance_state->server.repl_state = REDIS_REPL_CONNECTING;
+    server.repl_transfer_lastio = server.unixtime;
+    server.repl_transfer_s = fd;
+    server.repl_state = REDIS_REPL_CONNECTING;
     return REDIS_OK;
 }
 
 /* This function can be called when a non blocking connection is currently
  * in progress to undo it. */
 void undoConnectWithMaster(void) {
-    int fd = tls_instance_state->server.repl_transfer_s;
+    int fd = server.repl_transfer_s;
 
-    redisAssert(tls_instance_state->server.repl_state == REDIS_REPL_CONNECTING ||
-                tls_instance_state->server.repl_state == REDIS_REPL_RECEIVE_PONG);
-    aeDeleteFileEvent(tls_instance_state->server.el,fd,AE_READABLE|AE_WRITABLE);
+    redisAssert(server.repl_state == REDIS_REPL_CONNECTING ||
+                server.repl_state == REDIS_REPL_RECEIVE_PONG);
+    aeDeleteFileEvent(server.el,fd,AE_READABLE|AE_WRITABLE);
     close(fd);
-    tls_instance_state->server.repl_transfer_s = -1;
-    tls_instance_state->server.repl_state = REDIS_REPL_CONNECT;
+    server.repl_transfer_s = -1;
+    server.repl_state = REDIS_REPL_CONNECT;
 }
 
 /* This function aborts a non blocking replication attempt if there is one
@@ -1565,14 +1565,14 @@ void undoConnectWithMaster(void) {
  * the initial bulk transfer.
  *
  * If there was a replication handshake in progress 1 is returned and
- * the replication state (tls_instance_state->server.repl_state) set to REDIS_REPL_CONNECT.
+ * the replication state (server.repl_state) set to REDIS_REPL_CONNECT.
  *
  * Otherwise zero is returned and no operation is perforemd at all. */
 int cancelReplicationHandshake(void) {
-    if (tls_instance_state->server.repl_state == REDIS_REPL_TRANSFER) {
+    if (server.repl_state == REDIS_REPL_TRANSFER) {
         replicationAbortSyncTransfer();
-    } else if (tls_instance_state->server.repl_state == REDIS_REPL_CONNECTING ||
-             tls_instance_state->server.repl_state == REDIS_REPL_RECEIVE_PONG)
+    } else if (server.repl_state == REDIS_REPL_CONNECTING ||
+             server.repl_state == REDIS_REPL_RECEIVE_PONG)
     {
         undoConnectWithMaster();
     } else {
@@ -1592,7 +1592,7 @@ void disconnectAllBlockedClients(void) {
     listNode *ln;
     listIter li;
 
-    listRewind(tls_instance_state->server.clients,&li);
+    listRewind(server.clients,&li);
     while((ln = listNext(&li))) {
         redisClient *c = listNodeValue(ln);
 
@@ -1608,44 +1608,44 @@ void disconnectAllBlockedClients(void) {
 
 /* Set replication to the specified master address and port. */
 void replicationSetMaster(char *ip, int port) {
-    sdsfree(tls_instance_state->server.masterhost);
-    tls_instance_state->server.masterhost = sdsdup(ip);
-    tls_instance_state->server.masterport = port;
-    if (tls_instance_state->server.master) freeClient(tls_instance_state->server.master);
+    sdsfree(server.masterhost);
+    server.masterhost = sdsdup(ip);
+    server.masterport = port;
+    if (server.master) freeClient(server.master);
     disconnectAllBlockedClients(); /* Clients blocked in master, now slave. */
     disconnectSlaves(); /* Force our slaves to resync with us as well. */
     replicationDiscardCachedMaster(); /* Don't try a PSYNC. */
     freeReplicationBacklog(); /* Don't allow our chained slaves to PSYNC. */
     cancelReplicationHandshake();
-    tls_instance_state->server.repl_state = REDIS_REPL_CONNECT;
-    tls_instance_state->server.master_repl_offset = 0;
+    server.repl_state = REDIS_REPL_CONNECT;
+    server.master_repl_offset = 0;
 }
 
 /* Cancel replication, setting the instance as a master itself. */
 void replicationUnsetMaster(void) {
-    if (tls_instance_state->server.masterhost == NULL) return; /* Nothing to do. */
-    sdsfree(tls_instance_state->server.masterhost);
-    tls_instance_state->server.masterhost = NULL;
-    if (tls_instance_state->server.master) {
-        if (listLength(tls_instance_state->server.slaves) == 0) {
+    if (server.masterhost == NULL) return; /* Nothing to do. */
+    sdsfree(server.masterhost);
+    server.masterhost = NULL;
+    if (server.master) {
+        if (listLength(server.slaves) == 0) {
             /* If this instance is turned into a master and there are no
              * slaves, it inherits the replication offset from the master.
              * Under certain conditions this makes replicas comparable by
              * replication offset to understand what is the most updated. */
-            tls_instance_state->server.master_repl_offset = tls_instance_state->server.master->reploff;
+            server.master_repl_offset = server.master->reploff;
             freeReplicationBacklog();
         }
-        freeClient(tls_instance_state->server.master);
+        freeClient(server.master);
     }
     replicationDiscardCachedMaster();
     cancelReplicationHandshake();
-    tls_instance_state->server.repl_state = REDIS_REPL_NONE;
+    server.repl_state = REDIS_REPL_NONE;
 }
 
 void slaveofCommand(redisClient *c) {
     if (!strcasecmp(c->argv[1]->ptr,"no") &&
         !strcasecmp(c->argv[2]->ptr,"one")) {
-        if (tls_instance_state->server.masterhost) {
+        if (server.masterhost) {
             replicationUnsetMaster();
             redisLog(REDIS_NOTICE,"MASTER MODE enabled (user request)");
         }
@@ -1656,8 +1656,8 @@ void slaveofCommand(redisClient *c) {
             return;
 
         /* Check if we are already attached to the specified slave */
-        if (tls_instance_state->server.masterhost && !strcasecmp(tls_instance_state->server.masterhost,c->argv[1]->ptr)
-            && tls_instance_state->server.masterport == port) {
+        if (server.masterhost && !strcasecmp(server.masterhost,c->argv[1]->ptr)
+            && server.masterport == port) {
             redisLog(REDIS_NOTICE,"SLAVE OF would result into synchronization with the master we are already connected with. No operation performed.");
             addReplySds(c,sdsnew("+OK Already connected to specified master\r\n"));
             return;
@@ -1666,7 +1666,7 @@ void slaveofCommand(redisClient *c) {
          * we can continue. */
         replicationSetMaster(c->argv[1]->ptr, (int)port);                       /* UPSTREAM_ISSUE: missing (int) cast */
         redisLog(REDIS_NOTICE,"SLAVE OF %s:%d enabled (user request)",
-            tls_instance_state->server.masterhost, tls_instance_state->server.masterport);
+            server.masterhost, server.masterport);
     }
     addReply(c,shared.ok);
 }
@@ -1675,7 +1675,7 @@ void slaveofCommand(redisClient *c) {
  * (master or slave) and additional information related to replication
  * in an easy to process format. */
 void roleCommand(redisClient *c) {
-    if (tls_instance_state->server.masterhost == NULL) {
+    if (server.masterhost == NULL) {
         listIter li;
         listNode *ln;
         void *mbcount;
@@ -1683,9 +1683,9 @@ void roleCommand(redisClient *c) {
 
         addReplyMultiBulkLen(c,3);
         addReplyBulkCBuffer(c,"master",6);
-        addReplyLongLong(c,tls_instance_state->server.master_repl_offset);
+        addReplyLongLong(c,server.master_repl_offset);
         mbcount = addDeferredMultiBulkLength(c);
-        listRewind(tls_instance_state->server.slaves,&li);
+        listRewind(server.slaves,&li);
         while((ln = listNext(&li))) {
             redisClient *slave = ln->value;
             char ip[REDIS_IP_STR_LEN];
@@ -1704,9 +1704,9 @@ void roleCommand(redisClient *c) {
 
         addReplyMultiBulkLen(c,5);
         addReplyBulkCBuffer(c,"slave",5);
-        addReplyBulkCString(c,tls_instance_state->server.masterhost);
-        addReplyLongLong(c,tls_instance_state->server.masterport);
-        switch(tls_instance_state->server.repl_state) {
+        addReplyBulkCString(c,server.masterhost);
+        addReplyLongLong(c,server.masterport);
+        switch(server.repl_state) {
         case REDIS_REPL_NONE: slavestate = "none"; break;
         case REDIS_REPL_CONNECT: slavestate = "connect"; break;
         case REDIS_REPL_CONNECTING: slavestate = "connecting"; break;
@@ -1716,7 +1716,7 @@ void roleCommand(redisClient *c) {
         default: slavestate = "unknown"; break;
         }
         addReplyBulkCString(c,slavestate);
-        addReplyLongLong(c,tls_instance_state->server.master ? tls_instance_state->server.master->reploff : -1);
+        addReplyLongLong(c,server.master ? server.master->reploff : -1);
     }
 }
 
@@ -1724,7 +1724,7 @@ void roleCommand(redisClient *c) {
  * processed offset. If we are not connected with a master, the command has
  * no effects. */
 void replicationSendAck(void) {
-    redisClient *c = tls_instance_state->server.master;
+    redisClient *c = server.master;
 
     if (c != NULL) {
         c->flags |= REDIS_MASTER_FORCE_REPLY;
@@ -1740,7 +1740,7 @@ void replicationSendAck(void) {
 
 /* In order to implement partial synchronization we need to be able to cache
  * our master's client structure after a transient disconnection.
- * It is cached into tls_instance_state->server.cached_master and flushed away using the following
+ * It is cached into server.cached_master and flushed away using the following
  * functions. */
 
 /* This function is called by freeClient() in order to cache the master
@@ -1759,23 +1759,23 @@ void replicationSendAck(void) {
 void replicationCacheMaster(redisClient *c) {
     listNode *ln;
 
-    redisAssert(tls_instance_state->server.master != NULL && tls_instance_state->server.cached_master == NULL);
+    redisAssert(server.master != NULL && server.cached_master == NULL);
     redisLog(REDIS_NOTICE,"Caching the disconnected master state.");
 
     /* Remove from the list of clients, we don't want this client to be
      * listed by CLIENT LIST or processed in any way by batch operations. */
-    ln = listSearchKey(tls_instance_state->server.clients,c);
+    ln = listSearchKey(server.clients,c);
     redisAssert(ln != NULL);
-    listDelNode(tls_instance_state->server.clients,ln);
+    listDelNode(server.clients,ln);
 
-    /* Save the master. tls_instance_state->server.master will be set to null later by
+    /* Save the master. server.master will be set to null later by
      * replicationHandleMasterDisconnection(). */
-    tls_instance_state->server.cached_master = tls_instance_state->server.master;
+    server.cached_master = server.master;
 
     /* Remove the event handlers and close the socket. We'll later reuse
      * the socket of the new connection with the master during PSYNC. */
-    aeDeleteFileEvent(tls_instance_state->server.el,c->fd,AE_READABLE);
-    aeDeleteFileEvent(tls_instance_state->server.el,c->fd,AE_WRITABLE);
+    aeDeleteFileEvent(server.el,c->fd,AE_READABLE);
+    aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
     close(c->fd);
 
     /* Set fd to -1 so that we can safely call freeClient(c) later. */
@@ -1789,19 +1789,19 @@ void replicationCacheMaster(redisClient *c) {
 
     /* Caching the master happens instead of the actual freeClient() call,
      * so make sure to adjust the replication state. This function will
-     * also set tls_instance_state->server.master to NULL. */
+     * also set server.master to NULL. */
     replicationHandleMasterDisconnection();
 }
 
 /* Free a cached master, called when there are no longer the conditions for
  * a partial resync on reconnection. */
 void replicationDiscardCachedMaster(void) {
-    if (tls_instance_state->server.cached_master == NULL) return;
+    if (server.cached_master == NULL) return;
 
     redisLog(REDIS_NOTICE,"Discarding previously cached master state.");
-    tls_instance_state->server.cached_master->flags &= ~REDIS_MASTER;
-    freeClient(tls_instance_state->server.cached_master);
-    tls_instance_state->server.cached_master = NULL;
+    server.cached_master->flags &= ~REDIS_MASTER;
+    freeClient(server.cached_master);
+    server.cached_master = NULL;
 }
 
 /* Turn the cached master into the current master, using the file descriptor
@@ -1811,29 +1811,29 @@ void replicationDiscardCachedMaster(void) {
  * so the stream of data that we'll receive will start from were this
  * master left. */
 void replicationResurrectCachedMaster(int newfd) {
-    tls_instance_state->server.master = tls_instance_state->server.cached_master;
-    tls_instance_state->server.cached_master = NULL;
-    tls_instance_state->server.master->fd = newfd;
-    tls_instance_state->server.master->flags &= ~(REDIS_CLOSE_AFTER_REPLY|REDIS_CLOSE_ASAP);
-    tls_instance_state->server.master->authenticated = 1;
-    tls_instance_state->server.master->lastinteraction = tls_instance_state->server.unixtime;
-    tls_instance_state->server.repl_state = REDIS_REPL_CONNECTED;
+    server.master = server.cached_master;
+    server.cached_master = NULL;
+    server.master->fd = newfd;
+    server.master->flags &= ~(REDIS_CLOSE_AFTER_REPLY|REDIS_CLOSE_ASAP);
+    server.master->authenticated = 1;
+    server.master->lastinteraction = server.unixtime;
+    server.repl_state = REDIS_REPL_CONNECTED;
 
     /* Re-add to the list of clients. */
-    listAddNodeTail(tls_instance_state->server.clients,tls_instance_state->server.master);
-    if (aeCreateFileEvent(tls_instance_state->server.el, newfd, AE_READABLE,
-                          readQueryFromClient, tls_instance_state->server.master)) {
+    listAddNodeTail(server.clients,server.master);
+    if (aeCreateFileEvent(server.el, newfd, AE_READABLE,
+                          readQueryFromClient, server.master)) {
         redisLog(REDIS_WARNING,"Error resurrecting the cached master, impossible to add the readable handler: %s", strerror(errno));
-        freeClientAsync(tls_instance_state->server.master); /* Close ASAP. */
+        freeClientAsync(server.master); /* Close ASAP. */
     }
 
     /* We may also need to install the write handler as well if there is
      * pending data in the write buffers. */
-    if (tls_instance_state->server.master->bufpos || listLength(tls_instance_state->server.master->reply)) {
-        if (aeCreateFileEvent(tls_instance_state->server.el, newfd, AE_WRITABLE,
-                          sendReplyToClient, tls_instance_state->server.master)) {
+    if (server.master->bufpos || listLength(server.master->reply)) {
+        if (aeCreateFileEvent(server.el, newfd, AE_WRITABLE,
+                          sendReplyToClient, server.master)) {
             redisLog(REDIS_WARNING,"Error resurrecting the cached master, impossible to add the writable handler: %s", strerror(errno));
-            freeClientAsync(tls_instance_state->server.master); /* Close ASAP. */
+            freeClientAsync(server.master); /* Close ASAP. */
         }
     }
 }
@@ -1848,18 +1848,18 @@ void refreshGoodSlavesCount(void) {
     listNode *ln;
     int good = 0;
 
-    if (!tls_instance_state->server.repl_min_slaves_to_write ||
-        !tls_instance_state->server.repl_min_slaves_max_lag) return;
+    if (!server.repl_min_slaves_to_write ||
+        !server.repl_min_slaves_max_lag) return;
 
-    listRewind(tls_instance_state->server.slaves,&li);
+    listRewind(server.slaves,&li);
     while((ln = listNext(&li))) {
         redisClient *slave = ln->value;
-        time_t lag = tls_instance_state->server.unixtime - slave->repl_ack_time;
+        time_t lag = server.unixtime - slave->repl_ack_time;
 
         if (slave->replstate == REDIS_REPL_ONLINE &&
-            lag <= tls_instance_state->server.repl_min_slaves_max_lag) good++;
+            lag <= server.repl_min_slaves_max_lag) good++;
     }
-    tls_instance_state->server.repl_good_slaves_count = good;
+    server.repl_good_slaves_count = good;
 }
 
 /* ----------------------- REPLICATION SCRIPT CACHE --------------------------
@@ -1895,9 +1895,9 @@ void refreshGoodSlavesCount(void) {
 
 /* Initialize the script cache, only called at startup. */
 void replicationScriptCacheInit(void) {
-    tls_instance_state->server.repl_scriptcache_size = 10000;
-    tls_instance_state->server.repl_scriptcache_dict = dictCreate(&replScriptCacheDictType,NULL);
-    tls_instance_state->server.repl_scriptcache_fifo = listCreate();
+    server.repl_scriptcache_size = 10000;
+    server.repl_scriptcache_dict = dictCreate(&replScriptCacheDictType,NULL);
+    server.repl_scriptcache_fifo = listCreate();
 }
 
 /* Empty the script cache. Should be called every time we are no longer sure
@@ -1912,9 +1912,9 @@ void replicationScriptCacheInit(void) {
  *    to reclaim otherwise unused memory.
  */
 void replicationScriptCacheFlush(void) {
-    dictEmpty(tls_instance_state->server.repl_scriptcache_dict,NULL);
-    listRelease(tls_instance_state->server.repl_scriptcache_fifo);
-    tls_instance_state->server.repl_scriptcache_fifo = listCreate();
+    dictEmpty(server.repl_scriptcache_dict,NULL);
+    listRelease(server.repl_scriptcache_fifo);
+    server.repl_scriptcache_fifo = listCreate();
 }
 
 /* Add an entry into the script cache, if we reach max number of entries the
@@ -1924,26 +1924,26 @@ void replicationScriptCacheAdd(sds sha1) {
     sds key = sdsdup(sha1);
 
     /* Evict oldest. */
-    if (listLength(tls_instance_state->server.repl_scriptcache_fifo) == tls_instance_state->server.repl_scriptcache_size)
+    if (listLength(server.repl_scriptcache_fifo) == server.repl_scriptcache_size)
     {
-        listNode *ln = listLast(tls_instance_state->server.repl_scriptcache_fifo);
+        listNode *ln = listLast(server.repl_scriptcache_fifo);
         sds oldest = listNodeValue(ln);
 
-        retval = dictDelete(tls_instance_state->server.repl_scriptcache_dict,oldest);
+        retval = dictDelete(server.repl_scriptcache_dict,oldest);
         redisAssert(retval == DICT_OK);
-        listDelNode(tls_instance_state->server.repl_scriptcache_fifo,ln);
+        listDelNode(server.repl_scriptcache_fifo,ln);
     }
 
     /* Add current. */
-    retval = dictAdd(tls_instance_state->server.repl_scriptcache_dict,key,NULL);
-    listAddNodeHead(tls_instance_state->server.repl_scriptcache_fifo,key);
+    retval = dictAdd(server.repl_scriptcache_dict,key,NULL);
+    listAddNodeHead(server.repl_scriptcache_fifo,key);
     redisAssert(retval == DICT_OK);
 }
 
 /* Returns non-zero if the specified entry exists inside the cache, that is,
  * if all the slaves are aware of this script SHA1. */
 int replicationScriptCacheExists(sds sha1) {
-    return dictFind(tls_instance_state->server.repl_scriptcache_dict,sha1) != NULL;
+    return dictFind(server.repl_scriptcache_dict,sha1) != NULL;
 }
 
 /* --------------------------- REPLICATION CRON  ----------------------------- */
@@ -1951,35 +1951,35 @@ int replicationScriptCacheExists(sds sha1) {
 /* Replication cron function, called 1 time per second. */
 void replicationCron(void) {
     /* Non blocking connection timeout? */
-    if (tls_instance_state->server.masterhost &&
-        (tls_instance_state->server.repl_state == REDIS_REPL_CONNECTING ||
-         tls_instance_state->server.repl_state == REDIS_REPL_RECEIVE_PONG) &&
-        (time(NULL)-tls_instance_state->server.repl_transfer_lastio) > tls_instance_state->server.repl_timeout)
+    if (server.masterhost &&
+        (server.repl_state == REDIS_REPL_CONNECTING ||
+         server.repl_state == REDIS_REPL_RECEIVE_PONG) &&
+        (time(NULL)-server.repl_transfer_lastio) > server.repl_timeout)
     {
         redisLog(REDIS_WARNING,"Timeout connecting to the MASTER...");
         undoConnectWithMaster();
     }
 
     /* Bulk transfer I/O timeout? */
-    if (tls_instance_state->server.masterhost && tls_instance_state->server.repl_state == REDIS_REPL_TRANSFER &&
-        (time(NULL)-tls_instance_state->server.repl_transfer_lastio) > tls_instance_state->server.repl_timeout)
+    if (server.masterhost && server.repl_state == REDIS_REPL_TRANSFER &&
+        (time(NULL)-server.repl_transfer_lastio) > server.repl_timeout)
     {
         redisLog(REDIS_WARNING,"Timeout receiving bulk data from MASTER... If the problem persists try to set the 'repl-timeout' parameter in redis.conf to a larger value.");
         replicationAbortSyncTransfer();
     }
 
     /* Timed out master when we are an already connected slave? */
-    if (tls_instance_state->server.masterhost && tls_instance_state->server.repl_state == REDIS_REPL_CONNECTED &&
-        (time(NULL)-tls_instance_state->server.master->lastinteraction) > tls_instance_state->server.repl_timeout)
+    if (server.masterhost && server.repl_state == REDIS_REPL_CONNECTED &&
+        (time(NULL)-server.master->lastinteraction) > server.repl_timeout)
     {
         redisLog(REDIS_WARNING,"MASTER timeout: no data nor PING received...");
-        freeClient(tls_instance_state->server.master);
+        freeClient(server.master);
     }
 
     /* Check if we should connect to a MASTER */
-    if (tls_instance_state->server.repl_state == REDIS_REPL_CONNECT) {
+    if (server.repl_state == REDIS_REPL_CONNECT) {
         redisLog(REDIS_NOTICE,"Connecting to MASTER %s:%d",
-            tls_instance_state->server.masterhost, tls_instance_state->server.masterport);
+            server.masterhost, server.masterport);
         if (connectWithMaster() == REDIS_OK) {
             redisLog(REDIS_NOTICE,"MASTER <-> SLAVE sync started");
         }
@@ -1988,38 +1988,38 @@ void replicationCron(void) {
     /* Send ACK to master from time to time.
      * Note that we do not send periodic acks to masters that don't
      * support PSYNC and replication offsets. */
-    if (tls_instance_state->server.masterhost && tls_instance_state->server.master &&
-        !(tls_instance_state->server.master->flags & REDIS_PRE_PSYNC))
+    if (server.masterhost && server.master &&
+        !(server.master->flags & REDIS_PRE_PSYNC))
         replicationSendAck();
 
     /* If we have attached slaves, PING them from time to time.
      * So slaves can implement an explicit timeout to masters, and will
      * be able to detect a link disconnection even if the TCP connection
      * will not actually go down. */
-    if (!(tls_instance_state->server.cronloops % (tls_instance_state->server.repl_ping_slave_period * tls_instance_state->server.hz))) {
+    if (!(server.cronloops % (server.repl_ping_slave_period * server.hz))) {
         listIter li;
         listNode *ln;
         robj *ping_argv[1];
 
         /* First, send PING */
         ping_argv[0] = createStringObject("PING",4);
-        replicationFeedSlaves(tls_instance_state->server.slaves, tls_instance_state->server.slaveseldb, ping_argv, 1);
+        replicationFeedSlaves(server.slaves, server.slaveseldb, ping_argv, 1);
         decrRefCount(ping_argv[0]);
 
         /* Second, send a newline to all the slaves in pre-synchronization
          * stage, that is, slaves waiting for the master to create the RDB file.
          * The newline will be ignored by the slave but will refresh the
          * last-io timer preventing a timeout. */
-        listRewind(tls_instance_state->server.slaves,&li);
+        listRewind(server.slaves,&li);
         while((ln = listNext(&li))) {
             redisClient *slave = ln->value;
 
             if (slave->replstate == REDIS_REPL_WAIT_BGSAVE_START ||
                 (slave->replstate == REDIS_REPL_WAIT_BGSAVE_END &&
-                 tls_instance_state->server.rdb_child_type != REDIS_RDB_CHILD_TYPE_SOCKET))
+                 server.rdb_child_type != REDIS_RDB_CHILD_TYPE_SOCKET))
               {
 #ifdef WIN32_IOCP
-                    if (WSIOCP_SocketSend(slave->fd, "\n", 1, tls_instance_state->server.el,
+                    if (WSIOCP_SocketSend(slave->fd, "\n", 1, server.el,
                                           NULL, NULL, NULL) == -1) {
 #else
                     if (write(slave->fd, "\n", 1) == -1) {
@@ -2031,17 +2031,17 @@ void replicationCron(void) {
     }
 
     /* Disconnect timedout slaves. */
-    if (listLength(tls_instance_state->server.slaves)) {
+    if (listLength(server.slaves)) {
         listIter li;
         listNode *ln;
 
-        listRewind(tls_instance_state->server.slaves,&li);
+        listRewind(server.slaves,&li);
         while((ln = listNext(&li))) {
             redisClient *slave = ln->value;
 
             if (slave->replstate != REDIS_REPL_ONLINE) continue;
             if (slave->flags & REDIS_PRE_PSYNC) continue;
-            if ((tls_instance_state->server.unixtime - slave->repl_ack_time) > tls_instance_state->server.repl_timeout)
+            if ((server.unixtime - slave->repl_ack_time) > server.repl_timeout)
             {
                 redisLog(REDIS_WARNING, "Disconnecting timedout slave: %s",
                     replicationGetSlaveName(slave));
@@ -2052,26 +2052,26 @@ void replicationCron(void) {
 
     /* If we have no attached slaves and there is a replication backlog
      * using memory, free it after some (configured) time. */
-    if (listLength(tls_instance_state->server.slaves) == 0 && tls_instance_state->server.repl_backlog_time_limit &&
-        tls_instance_state->server.repl_backlog)
+    if (listLength(server.slaves) == 0 && server.repl_backlog_time_limit &&
+        server.repl_backlog)
     {
-        time_t idle = tls_instance_state->server.unixtime - tls_instance_state->server.repl_no_slaves_since;
+        time_t idle = server.unixtime - server.repl_no_slaves_since;
 
-        if (idle > tls_instance_state->server.repl_backlog_time_limit) {
+        if (idle > server.repl_backlog_time_limit) {
             freeReplicationBacklog();
             redisLog(REDIS_NOTICE,
                 "Replication backlog freed after %d seconds "
                 "without connected slaves.",
-                (int) tls_instance_state->server.repl_backlog_time_limit);
+                (int) server.repl_backlog_time_limit);
         }
     }
 
     /* If AOF is disabled and we no longer have attached slaves, we can
      * free our Replication Script Cache as there is no need to propagate
      * EVALSHA at all. */
-    if (listLength(tls_instance_state->server.slaves) == 0 &&
-        tls_instance_state->server.aof_state == REDIS_AOF_OFF &&
-        listLength(tls_instance_state->server.repl_scriptcache_fifo) != 0)
+    if (listLength(server.slaves) == 0 &&
+        server.aof_state == REDIS_AOF_OFF &&
+        listLength(server.repl_scriptcache_fifo) != 0)
     {
         replicationScriptCacheFlush();
     }
@@ -2083,23 +2083,23 @@ void replicationCron(void) {
      * This code is also useful to trigger a BGSAVE if the diskless
      * replication was turned off with CONFIG SET, while there were already
      * slaves in WAIT_BGSAVE_START state. */
-    if (tls_instance_state->server.rdb_child_pid == -1 && tls_instance_state->server.aof_child_pid == -1) {
+    if (server.rdb_child_pid == -1 && server.aof_child_pid == -1) {
         time_t idle, max_idle = 0;
         int slaves_waiting = 0;
         listNode *ln;
         listIter li;
 
-        listRewind(tls_instance_state->server.slaves,&li);
+        listRewind(server.slaves,&li);
         while((ln = listNext(&li))) {
             redisClient *slave = ln->value;
             if (slave->replstate == REDIS_REPL_WAIT_BGSAVE_START) {
-                idle = tls_instance_state->server.unixtime - slave->lastinteraction;
+                idle = server.unixtime - slave->lastinteraction;
                 if (idle > max_idle) max_idle = idle;
                 slaves_waiting++;
             }
         }
 
-        if (slaves_waiting && max_idle > tls_instance_state->server.repl_diskless_sync_delay) {
+        if (slaves_waiting && max_idle > server.repl_diskless_sync_delay) {
             /* Start a BGSAVE. Usually with socket target, or with disk target
              * if there was a recent socket -> disk config change. */
             if (startBgsaveForReplication() == REDIS_OK) {
@@ -2108,7 +2108,7 @@ void replicationCron(void) {
                  * the current target is disk. Otherwise it was already done
                  * by rdbSaveToSlavesSockets() which is called by
                  * startBgsaveForReplication(). */
-                listRewind(tls_instance_state->server.slaves,&li);
+                listRewind(server.slaves,&li);
                 while((ln = listNext(&li))) {
                     redisClient *slave = ln->value;
                     if (slave->replstate == REDIS_REPL_WAIT_BGSAVE_START)

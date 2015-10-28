@@ -176,7 +176,7 @@
  * involved in updating the sparse representation is not justified by the
  * memory savings. The exact maximum length of the sparse representation
  * when this implementation switches to the dense representation is
- * configured via the define tls_instance_state->server.hll_sparse_max_bytes.
+ * configured via the define server.hll_sparse_max_bytes.
  */
 
 struct hllhdr {
@@ -634,7 +634,7 @@ int hllSparseToDense(robj *o) {
  * As a side effect the function may promote the HLL representation from
  * sparse to dense: this happens when a register requires to be set to a value
  * not representable with the sparse representation, or when the resulting
- * size would be greater than tls_instance_state->server.hll_sparse_max_bytes. */
+ * size would be greater than server.hll_sparse_max_bytes. */
 int hllSparseAdd(robj *o, unsigned char *ele, size_t elesize) {
     struct hllhdr *hdr;
     uint8_t oldcount, count, *sparse, *end, *p, *prev, *next;
@@ -816,7 +816,7 @@ int hllSparseAdd(robj *o, unsigned char *ele, size_t elesize) {
      int deltalen = seqlen-oldlen;
 
      if (deltalen > 0 &&
-         sdslen(o->ptr)+deltalen > tls_instance_state->server.hll_sparse_max_bytes) goto promote;
+         sdslen(o->ptr)+deltalen > server.hll_sparse_max_bytes) goto promote;
      if (deltalen && next) memmove(next+deltalen,next,end-next);
      sdsIncrLen(o->ptr,deltalen);
      memcpy(p,seq,seqlen);
@@ -1185,7 +1185,7 @@ void pfaddCommand(redisClient *c) {
     if (updated) {
         signalModifiedKey(c->db,c->argv[1]);
         notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"pfadd",c->argv[1],c->db->id);
-        tls_instance_state->server.dirty++;
+        server.dirty++;
         HLL_INVALIDATE_CACHE(hdr);
     }
     addReply(c, updated ? shared.cone : shared.czero);
@@ -1275,7 +1275,7 @@ void pfcountCommand(redisClient *c) {
              * may be modified and given that the HLL is a Redis string
              * we need to propagate the change. */
             signalModifiedKey(c->db,c->argv[1]);
-            tls_instance_state->server.dirty++;
+            server.dirty++;
         }
         addReplyLongLong(c,card);
     }
@@ -1338,7 +1338,7 @@ void pfmergeCommand(redisClient *c) {
     /* We generate an PFADD event for PFMERGE for semantical simplicity
      * since in theory this is a mass-add of elements. */
     notifyKeyspaceEvent(REDIS_NOTIFY_STRING,"pfadd",c->argv[1],c->db->id);
-    tls_instance_state->server.dirty++;
+    server.dirty++;
     addReply(c,shared.ok);
 }
 
@@ -1405,7 +1405,7 @@ void pfselftestCommand(redisClient *c) {
 
         /* Make sure that for small cardinalities we use sparse
          * encoding. */
-        if (j == checkpoint && j < tls_instance_state->server.hll_sparse_max_bytes/2) {
+        if (j == checkpoint && j < server.hll_sparse_max_bytes/2) {
             hdr2 = o->ptr;
             if (hdr2->encoding != HLL_SPARSE) {
                 addReplyError(c, "TESTFAILED sparse encoding not used");
@@ -1476,7 +1476,7 @@ void pfdebugCommand(redisClient *c) {
                 addReplySds(c,sdsnew(invalid_hll_err));
                 return;
             }
-            tls_instance_state->server.dirty++; /* Force propagation on encoding change. */
+            server.dirty++; /* Force propagation on encoding change. */
         }
 
         hdr = o->ptr;
@@ -1543,7 +1543,7 @@ void pfdebugCommand(redisClient *c) {
                 return;
             }
             conv = 1;
-            tls_instance_state->server.dirty++; /* Force propagation on encoding change. */
+            server.dirty++; /* Force propagation on encoding change. */
         }
         addReply(c,conv ? shared.cone : shared.czero);
     } else {

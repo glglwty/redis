@@ -49,7 +49,7 @@ robj *createObject(int type, void *ptr) {
     o->refcount = 1;
 
     /* Set the LRU to the current lruclock (minutes resolution). */
-    o->lru = tls_instance_state->server.lruclock;
+    o->lru = server.lruclock;
     return o;
 }
 
@@ -348,9 +348,9 @@ robj *tryObjectEncoding(robj *o) {
      * Note that we also avoid using shared integers when maxmemory is used
      * because every object needs to have a private LRU field for the LRU
      * algorithm to work well. */
-    if ((tls_instance_state->server.maxmemory == 0 ||
-         (tls_instance_state->server.maxmemory_policy != REDIS_MAXMEMORY_VOLATILE_LRU &&
-          tls_instance_state->server.maxmemory_policy != REDIS_MAXMEMORY_ALLKEYS_LRU)) &&
+    if ((server.maxmemory == 0 ||
+         (server.maxmemory_policy != REDIS_MAXMEMORY_VOLATILE_LRU &&
+          server.maxmemory_policy != REDIS_MAXMEMORY_ALLKEYS_LRU)) &&
         value >= 0 && value < REDIS_SHARED_INTEGERS)
     {
         decrRefCount(o);
@@ -610,10 +610,10 @@ char *strEncoding(int encoding) {
 /* Given an object returns the min number of seconds the object was never
  * requested, using an approximated LRU algorithm. */
 PORT_ULONG estimateObjectIdleTime(robj *o) {
-    if (tls_instance_state->server.lruclock >= o->lru) {
-        return (tls_instance_state->server.lruclock - o->lru) * REDIS_LRU_CLOCK_RESOLUTION;
+    if (server.lruclock >= o->lru) {
+        return (server.lruclock - o->lru) * REDIS_LRU_CLOCK_RESOLUTION;
     } else {
-        return ((REDIS_LRU_CLOCK_MAX - o->lru) + tls_instance_state->server.lruclock) *
+        return ((REDIS_LRU_CLOCK_MAX - o->lru) + server.lruclock) *
                     REDIS_LRU_CLOCK_RESOLUTION;
     }
 }

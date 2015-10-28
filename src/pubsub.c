@@ -65,10 +65,10 @@ int pubsubSubscribeChannel(redisClient *c, robj *channel) {
         retval = 1;
         incrRefCount(channel);
         /* Add the client to the channel -> list of clients hash table */
-        de = dictFind(tls_instance_state->server.pubsub_channels,channel);
+        de = dictFind(server.pubsub_channels,channel);
         if (de == NULL) {
             clients = listCreate();
-            dictAdd(tls_instance_state->server.pubsub_channels,channel,clients);
+            dictAdd(server.pubsub_channels,channel,clients);
             incrRefCount(channel);
         } else {
             clients = dictGetVal(de);
@@ -97,7 +97,7 @@ int pubsubUnsubscribeChannel(redisClient *c, robj *channel, int notify) {
     if (dictDelete(c->pubsub_channels,channel) == DICT_OK) {
         retval = 1;
         /* Remove the client from the channel -> clients list hash table */
-        de = dictFind(tls_instance_state->server.pubsub_channels,channel);
+        de = dictFind(server.pubsub_channels,channel);
         redisAssertWithInfo(c,NULL,de != NULL);
         clients = dictGetVal(de);
         ln = listSearchKey(clients,c);
@@ -107,7 +107,7 @@ int pubsubUnsubscribeChannel(redisClient *c, robj *channel, int notify) {
             /* Free the list and associated hash entry at all if this was
              * the latest client, so that it will be possible to abuse
              * Redis PUBSUB creating millions of channels. */
-            dictDelete(tls_instance_state->server.pubsub_channels,channel);
+            dictDelete(server.pubsub_channels,channel);
         }
     }
     /* Notify the client */
@@ -135,7 +135,7 @@ int pubsubSubscribePattern(redisClient *c, robj *pattern) {
         pat = zmalloc(sizeof(*pat));
         pat->pattern = getDecodedObject(pattern);
         pat->client = c;
-        listAddNodeTail(tls_instance_state->server.pubsub_patterns,pat);
+        listAddNodeTail(server.pubsub_patterns,pat);
     }
     /* Notify the client */
     addReply(c,shared.mbulkhdr[3]);
@@ -158,8 +158,8 @@ int pubsubUnsubscribePattern(redisClient *c, robj *pattern, int notify) {
         listDelNode(c->pubsub_patterns,ln);
         pat.client = c;
         pat.pattern = pattern;
-        ln = listSearchKey(tls_instance_state->server.pubsub_patterns,&pat);
-        listDelNode(tls_instance_state->server.pubsub_patterns,ln);
+        ln = listSearchKey(server.pubsub_patterns,&pat);
+        listDelNode(server.pubsub_patterns,ln);
     }
     /* Notify the client */
     if (notify) {
@@ -229,7 +229,7 @@ int pubsubPublishMessage(robj *channel, robj *message) {
     listIter li;
 
     /* Send to clients listening for that channel */
-    de = dictFind(tls_instance_state->server.pubsub_channels,channel);
+    de = dictFind(server.pubsub_channels,channel);
     if (de) {
         list *list = dictGetVal(de);
         listNode *ln;
@@ -247,8 +247,8 @@ int pubsubPublishMessage(robj *channel, robj *message) {
         }
     }
     /* Send to clients listening to matching channels */
-    if (listLength(tls_instance_state->server.pubsub_patterns)) {
-        listRewind(tls_instance_state->server.pubsub_patterns,&li);
+    if (listLength(server.pubsub_patterns)) {
+        listRewind(server.pubsub_patterns,&li);
         channel = getDecodedObject(channel);
         while ((ln = listNext(&li)) != NULL) {
             pubsubPattern *pat = ln->value;
@@ -327,7 +327,7 @@ void pubsubCommand(redisClient *c) {
     {
         /* PUBSUB CHANNELS [<pattern>] */
         sds pat = (c->argc == 2) ? NULL : c->argv[2]->ptr;
-        dictIterator *di = dictGetIterator(tls_instance_state->server.pubsub_channels);
+        dictIterator *di = dictGetIterator(server.pubsub_channels);
         dictEntry *de;
         PORT_LONG mblen = 0;
         void *replylen;
@@ -352,14 +352,14 @@ void pubsubCommand(redisClient *c) {
 
         addReplyMultiBulkLen(c,(c->argc-2)*2);
         for (j = 2; j < c->argc; j++) {
-            list *l = dictFetchValue(tls_instance_state->server.pubsub_channels,c->argv[j]);
+            list *l = dictFetchValue(server.pubsub_channels,c->argv[j]);
 
             addReplyBulk(c,c->argv[j]);
             addReplyLongLong(c,l ? listLength(l) : 0);
         }
     } else if (!strcasecmp(c->argv[1]->ptr,"numpat") && c->argc == 2) {
         /* PUBSUB NUMPAT */
-        addReplyLongLong(c,listLength(tls_instance_state->server.pubsub_patterns));
+        addReplyLongLong(c,listLength(server.pubsub_patterns));
     } else {
         addReplyErrorFormat(c,
             "Unknown PUBSUB subcommand or wrong number of arguments for '%s'",

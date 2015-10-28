@@ -114,7 +114,7 @@ __declspec(thread) instance_state_t *tls_instance_state; /* server global state 
  * m: may increase memory usage once called. Don't allow if out of memory.
  * a: admin command, like SAVE or SHUTDOWN.
  * p: Pub/Sub related command.
- * f: force replication of this command, regardless of tls_instance_state->server.dirty.
+ * f: force replication of this command, regardless of server.dirty.
  * s: command not allowed in scripts.
  * R: random command. Command is not deterministic, that is, the same command
  *    with the same arguments, with the same key space, may have different
@@ -303,12 +303,12 @@ void redisLogRaw(int level, const char *msg) {
     FILE *fp;
     char buf[64];
     int rawmode = (level & REDIS_LOG_RAW);
-    int log_to_stdout = tls_instance_state->server.logfile[0] == '\0';
+    int log_to_stdout = server.logfile[0] == '\0';
 
     level &= 0xff; /* clear flags */
-    if (level < tls_instance_state->server.verbosity) return;
+    if (level < server.verbosity) return;
 
-    fp = log_to_stdout ? stdout : fopen(tls_instance_state->server.logfile,"a");
+    fp = log_to_stdout ? stdout : fopen(server.logfile,"a");
     if (!fp) return;
 
     if (rawmode) {
@@ -325,7 +325,7 @@ void redisLogRaw(int level, const char *msg) {
     fflush(fp);
 
     if (!log_to_stdout) fclose(fp);
-    if (tls_instance_state->server.syslog_enabled) syslog(syslogLevelMap[level], "%s", msg);
+    if (server.syslog_enabled) syslog(syslogLevelMap[level], "%s", msg);
 }
 
 /* Like redisLogRaw() but with printf-alike support. This is the function that
@@ -335,7 +335,7 @@ void redisLog(int level, const char *fmt, ...) {
     va_list ap;
     char msg[REDIS_MAX_LOGMSG_LEN];
 
-    if ((level&0xff) < tls_instance_state->server.verbosity) return;
+    if ((level&0xff) < server.verbosity) return;
 
     va_start(ap, fmt);
     vsnprintf(msg, sizeof(msg), fmt, ap);
@@ -352,13 +352,13 @@ void redisLog(int level, const char *fmt, ...) {
  * where we need printf-alike features are served by redisLog(). */
 void redisLogFromHandler(int level, const char *msg) {
     int fd;
-    int log_to_stdout = tls_instance_state->server.logfile[0] == '\0';
+    int log_to_stdout = server.logfile[0] == '\0';
     char buf[64];
 
-    if ((level&0xff) < tls_instance_state->server.verbosity || (log_to_stdout && tls_instance_state->server.daemonize))
+    if ((level&0xff) < server.verbosity || (log_to_stdout && server.daemonize))
         return;
     fd = log_to_stdout ? STDOUT_FILENO :
-                         open(tls_instance_state->server.logfile, O_APPEND|O_CREAT|O_WRONLY, 0644);
+                         open(server.logfile, O_APPEND|O_CREAT|O_WRONLY, 0644);
     if (fd == -1) return;
     ll2string(buf,sizeof(buf),getpid());
     if (write(fd,"[",1) == -1) goto err;
@@ -548,7 +548,7 @@ dictType dbDictType = {
     dictRedisObjectDestructor   /* val destructor */
 };
 
-/* tls_instance_state->server.lua_scripts sha (as sds string) -> scripts (as robj) cache. */
+/* server.lua_scripts sha (as sds string) -> scripts (as robj) cache. */
 dictType shaScriptObjectDictType = {
     dictSdsCaseHash,            /* hash function */
     NULL,                       /* key dup */
@@ -600,7 +600,7 @@ dictType keylistDictType = {
     dictListDestructor          /* val destructor */
 };
 
-/* Replication cached script dict (tls_instance_state->server.repl_scriptcache_dict).
+/* Replication cached script dict (server.repl_scriptcache_dict).
  * Keys are sds SHA1 strings, while values are not used at all in the current
  * implementation. */
 dictType replScriptCacheDictType = {
@@ -624,10 +624,10 @@ int htNeedsResize(dict *dict) {
 /* If the percentage of used slots in the HT reaches REDIS_HT_MINFILL
  * we resize the hash table to save memory */
 void tryResizeHashTables(int dbid) {
-    if (htNeedsResize(tls_instance_state->server.db[dbid].dict))
-        dictResize(tls_instance_state->server.db[dbid].dict);
-    if (htNeedsResize(tls_instance_state->server.db[dbid].expires))
-        dictResize(tls_instance_state->server.db[dbid].expires);
+    if (htNeedsResize(server.db[dbid].dict))
+        dictResize(server.db[dbid].dict);
+    if (htNeedsResize(server.db[dbid].expires))
+        dictResize(server.db[dbid].expires);
 }
 
 /* Our hash table implementation performs rehashing incrementally while
@@ -639,13 +639,13 @@ void tryResizeHashTables(int dbid) {
  * is returned. */
 int incrementallyRehash(int dbid) {
     /* Keys dictionary */
-    if (dictIsRehashing(tls_instance_state->server.db[dbid].dict)) {
-        dictRehashMilliseconds(tls_instance_state->server.db[dbid].dict,1);
+    if (dictIsRehashing(server.db[dbid].dict)) {
+        dictRehashMilliseconds(server.db[dbid].dict,1);
         return 1; /* already used our millisecond for this loop... */
     }
     /* Expires */
-    if (dictIsRehashing(tls_instance_state->server.db[dbid].expires)) {
-        dictRehashMilliseconds(tls_instance_state->server.db[dbid].expires,1);
+    if (dictIsRehashing(server.db[dbid].expires)) {
+        dictRehashMilliseconds(server.db[dbid].expires,1);
         return 1; /* already used our millisecond for this loop... */
     }
     return 0;
@@ -658,7 +658,7 @@ int incrementallyRehash(int dbid) {
  * for dict.c to resize the hash tables accordingly to the fact we have o not
  * running childs. */
 void updateDictResizePolicy(void) {
-    if (tls_instance_state->server.rdb_child_pid == -1 && tls_instance_state->server.aof_child_pid == -1)
+    if (server.rdb_child_pid == -1 && server.aof_child_pid == -1)
         dictEnableResize();
     else
         dictDisableResize();
@@ -673,7 +673,7 @@ void updateDictResizePolicy(void) {
  * If the key is found to be expired, it is removed from the database and
  * 1 is returned. Otherwise no operation is performed and 0 is returned.
  *
- * When a key is expired, tls_instance_state->server.stat_expiredkeys is incremented.
+ * When a key is expired, server.stat_expiredkeys is incremented.
  *
  * The parameter 'now' is the current time in milliseconds as is passed
  * to the function to avoid too many gettimeofday() syscalls. */
@@ -688,7 +688,7 @@ int activeExpireCycleTryExpire(redisDb *db, struct dictEntry *de, PORT_LONGLONG 
         notifyKeyspaceEvent(REDIS_NOTIFY_EXPIRED,
             "expired",keyobj,db->id);
         decrRefCount(keyobj);
-        tls_instance_state->server.stat_expiredkeys++;
+        server.stat_expiredkeys++;
         return 1;
     } else {
         return 0;
@@ -744,14 +744,14 @@ void activeExpireCycle(int type) {
      * 2) If last time we hit the time limit, we want to scan all DBs
      * in this iteration, as there is work to do in some DB and we don't want
      * expired keys to use memory for too much time. */
-    if ((dbs_per_call > tls_instance_state->server.dbnum) || timelimit_exit)
-        dbs_per_call = tls_instance_state->server.dbnum;
+    if ((dbs_per_call > server.dbnum) || timelimit_exit)
+        dbs_per_call = server.dbnum;
 
     /* We can use at max ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC percentage of CPU time
      * per iteration. Since this function gets called with a frequency of
-     * tls_instance_state->server.hz times per second, the following is the max amount of
+     * server.hz times per second, the following is the max amount of
      * microseconds we can spend in this function. */
-    timelimit = 1000000*ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/tls_instance_state->server.hz/100;
+    timelimit = 1000000*ACTIVE_EXPIRE_CYCLE_SLOW_TIME_PERC/server.hz/100;
     timelimit_exit = 0;
     if (timelimit <= 0) timelimit = 1;
 
@@ -760,7 +760,7 @@ void activeExpireCycle(int type) {
 
     for (j = 0; j < dbs_per_call; j++) {
         int expired;
-        redisDb *db = tls_instance_state->server.db+(current_db % tls_instance_state->server.dbnum);
+        redisDb *db = server.db+(current_db % server.dbnum);
 
         /* Increment the DB now so we are sure if we run out of time
          * in the current DB we'll restart from the next. This allows to
@@ -836,26 +836,26 @@ void activeExpireCycle(int type) {
 }
 
 void updateLRUClock(void) {
-    tls_instance_state->server.lruclock = (tls_instance_state->server.unixtime/REDIS_LRU_CLOCK_RESOLUTION) &
+    server.lruclock = (server.unixtime/REDIS_LRU_CLOCK_RESOLUTION) &
                                                 REDIS_LRU_CLOCK_MAX;
 }
 
 
 /* Add a sample to the operations per second array of samples. */
 void trackInstantaneousMetric(int metric, PORT_LONGLONG current_reading) {
-    PORT_LONGLONG t = mstime() - tls_instance_state->server.inst_metric[metric].last_sample_time;
+    PORT_LONGLONG t = mstime() - server.inst_metric[metric].last_sample_time;
     PORT_LONGLONG ops = current_reading -
-                    tls_instance_state->server.inst_metric[metric].last_sample_count;
+                    server.inst_metric[metric].last_sample_count;
     PORT_LONGLONG ops_sec;
 
     ops_sec = t > 0 ? (ops*1000/t) : 0;
 
-    tls_instance_state->server.inst_metric[metric].samples[tls_instance_state->server.inst_metric[metric].idx] =
+    server.inst_metric[metric].samples[server.inst_metric[metric].idx] =
         ops_sec;
-    tls_instance_state->server.inst_metric[metric].idx++;
-    tls_instance_state->server.inst_metric[metric].idx %= REDIS_METRIC_SAMPLES;
-    tls_instance_state->server.inst_metric[metric].last_sample_time = mstime();
-    tls_instance_state->server.inst_metric[metric].last_sample_count = current_reading;
+    server.inst_metric[metric].idx++;
+    server.inst_metric[metric].idx %= REDIS_METRIC_SAMPLES;
+    server.inst_metric[metric].last_sample_time = mstime();
+    server.inst_metric[metric].last_sample_count = current_reading;
 }
 
 /* Return the mean of all the samples. */
@@ -864,20 +864,20 @@ PORT_LONGLONG getInstantaneousMetric(int metric) {
     PORT_LONGLONG sum = 0;
 
     for (j = 0; j < REDIS_METRIC_SAMPLES; j++)
-        sum += tls_instance_state->server.inst_metric[metric].samples[j];
+        sum += server.inst_metric[metric].samples[j];
     return sum / REDIS_METRIC_SAMPLES;
 }
 
 /* Check for timeouts. Returns non-zero if the client was terminated */
 int clientsCronHandleTimeout(redisClient *c) {
-    time_t now = tls_instance_state->server.unixtime;
+    time_t now = server.unixtime;
 
-    if (tls_instance_state->server.maxidletime &&
+    if (server.maxidletime &&
         !(c->flags & REDIS_SLAVE) &&    /* no timeout for slaves */
         !(c->flags & REDIS_MASTER) &&   /* no timeout for masters */
         !(c->flags & REDIS_BLOCKED) &&  /* no timeout for BLPOP */
         !(c->flags & REDIS_PUBSUB) &&   /* no timeout for Pub/Sub clients */
-        (now - c->lastinteraction > tls_instance_state->server.maxidletime))
+        (now - c->lastinteraction > server.maxidletime))
     {
         redisLog(REDIS_VERBOSE,"Closing idle client");
         freeClient(c);
@@ -897,7 +897,7 @@ int clientsCronHandleTimeout(redisClient *c) {
  * The function always returns 0 as it never terminates the client. */
 int clientsCronResizeQueryBuffer(redisClient *c) {
     size_t querybuf_size = sdsAllocSize(c->querybuf);
-    time_t idletime = tls_instance_state->server.unixtime - c->lastinteraction;
+    time_t idletime = server.unixtime - c->lastinteraction;
 
     /* There are two conditions to resize the query buffer:
      * 1) Query buffer is > BIG_ARG and too big for latest peak.
@@ -918,25 +918,25 @@ int clientsCronResizeQueryBuffer(redisClient *c) {
 }
 
 void clientsCron(void) {
-    /* Make sure to process at least 1/(tls_instance_state->server.hz*10) of clients per call.
-     * Since this function is called tls_instance_state->server.hz times per second we are sure that
+    /* Make sure to process at least 1/(server.hz*10) of clients per call.
+     * Since this function is called server.hz times per second we are sure that
      * in the worst case we process all the clients in 10 seconds.
      * In normal conditions (a reasonable number of clients) we process
      * all the clients in a shorter time. */
-    int numclients = (int)listLength(tls_instance_state->server.clients);                           /* UPSTREAM_ISSUE: missing (int) cast */
-    int iterations = numclients/(tls_instance_state->server.hz*10);
+    int numclients = (int)listLength(server.clients);                           /* UPSTREAM_ISSUE: missing (int) cast */
+    int iterations = numclients/(server.hz*10);
 
     if (iterations < 50)
         iterations = (numclients < 50) ? numclients : 50;
-    while(listLength(tls_instance_state->server.clients) && iterations--) {
+    while(listLength(server.clients) && iterations--) {
         redisClient *c;
         listNode *head;
 
         /* Rotate the list, take the current head, process.
          * This way if the client must be removed from the list it's the
          * first element and we don't incur into O(N) computation. */
-        listRotate(tls_instance_state->server.clients);
-        head = listFirst(tls_instance_state->server.clients);
+        listRotate(server.clients);
+        head = listFirst(server.clients);
         c = listNodeValue(head);
         /* The following functions do different service checks on the client.
          * The protocol is that they return non-zero if the client was
@@ -952,13 +952,13 @@ void clientsCron(void) {
 void databasesCron(void) {
     /* Expire keys by random sampling. Not required for slaves
      * as master will synthesize DELs for us. */
-    if (tls_instance_state->server.active_expire_enabled && tls_instance_state->server.masterhost == NULL)
+    if (server.active_expire_enabled && server.masterhost == NULL)
         activeExpireCycle(ACTIVE_EXPIRE_CYCLE_SLOW);
 
     /* Perform hash tables rehashing if needed, but only if there are no
      * other processes saving the DB on disk. Otherwise rehashing is bad
      * as will cause a lot of copy-on-write of memory pages. */
-    if (tls_instance_state->server.rdb_child_pid == -1 && tls_instance_state->server.aof_child_pid == -1) {
+    if (server.rdb_child_pid == -1 && server.aof_child_pid == -1) {
         /* We use global counters so if we stop the computation at a given
          * DB we'll be able to start from the successive in the next
          * cron loop iteration. */
@@ -968,18 +968,18 @@ void databasesCron(void) {
         int j;
 
         /* Don't test more DBs than we have. */
-        if (dbs_per_call > tls_instance_state->server.dbnum) dbs_per_call = tls_instance_state->server.dbnum;
+        if (dbs_per_call > server.dbnum) dbs_per_call = server.dbnum;
 
         /* Resize */
         for (j = 0; j < dbs_per_call; j++) {
-            tryResizeHashTables(resize_db % tls_instance_state->server.dbnum);
+            tryResizeHashTables(resize_db % server.dbnum);
             resize_db++;
         }
 
         /* Rehash */
-        if (tls_instance_state->server.activerehashing) {
+        if (server.activerehashing) {
             for (j = 0; j < dbs_per_call; j++) {
-                int work_done = incrementallyRehash(rehash_db % tls_instance_state->server.dbnum);
+                int work_done = incrementallyRehash(rehash_db % server.dbnum);
                 rehash_db++;
                 if (work_done) {
                     /* If the function did some work, stop here, we'll do
@@ -996,11 +996,11 @@ void databasesCron(void) {
  * every object access, and accuracy is not needed. To access a global var is
  * a lot faster than calling time(NULL) */
 void updateCachedTime(void) {
-    tls_instance_state->server.unixtime = time(NULL);
-    tls_instance_state->server.mstime = mstime();
+    server.unixtime = time(NULL);
+    server.mstime = mstime();
 }
 
-/* This is our timer interrupt, called tls_instance_state->server.hz times per second.
+/* This is our timer interrupt, called server.hz times per second.
  * Here is where we do a number of things that need to be done asynchronously.
  * For instance:
  *
@@ -1014,7 +1014,7 @@ void updateCachedTime(void) {
  * - Replication reconnection.
  * - Many more...
  *
- * Everything directly called here will be called tls_instance_state->server.hz times per second,
+ * Everything directly called here will be called server.hz times per second,
  * so in order to throttle execution of things we want to do less frequently
  * a macro is used: run_with_period(milliseconds) { .... }
  */
@@ -1027,17 +1027,17 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
 
     /* Software watchdog: deliver the SIGALRM that will reach the signal
      * handler if we don't return here fast enough. */
-    if (tls_instance_state->server.watchdog_period) watchdogScheduleSignal(tls_instance_state->server.watchdog_period);
+    if (server.watchdog_period) watchdogScheduleSignal(server.watchdog_period);
 
     /* Update the time cache. */
     updateCachedTime();
 
     run_with_period(100) {
-        trackInstantaneousMetric(REDIS_METRIC_COMMAND,tls_instance_state->server.stat_numcommands);
+        trackInstantaneousMetric(REDIS_METRIC_COMMAND,server.stat_numcommands);
         trackInstantaneousMetric(REDIS_METRIC_NET_INPUT,
-                tls_instance_state->server.stat_net_input_bytes);
+                server.stat_net_input_bytes);
         trackInstantaneousMetric(REDIS_METRIC_NET_OUTPUT,
-                tls_instance_state->server.stat_net_output_bytes);
+                server.stat_net_output_bytes);
     }
 
     /* We have just 22 bits per object for LRU information.
@@ -1055,42 +1055,42 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
     updateLRUClock();
 
     /* Record the max memory used since the server was started. */
-    if (zmalloc_used_memory() > tls_instance_state->server.stat_peak_memory)
-        tls_instance_state->server.stat_peak_memory = zmalloc_used_memory();
+    if (zmalloc_used_memory() > server.stat_peak_memory)
+        server.stat_peak_memory = zmalloc_used_memory();
 
     /* Sample the RSS here since this is a relatively slow call. */
-    tls_instance_state->server.resident_set_size = zmalloc_get_rss();
+    server.resident_set_size = zmalloc_get_rss();
 
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
-    if (tls_instance_state->server.shutdown_asap) {
+    if (server.shutdown_asap) {
         if (prepareForShutdown(0) == REDIS_OK) exit(0);
         redisLog(REDIS_WARNING,"SIGTERM received but errors trying to shut down the server, check the logs for more information");
-        tls_instance_state->server.shutdown_asap = 0;
+        server.shutdown_asap = 0;
     }
 
     /* Show some info about non-empty databases */
     run_with_period(5000) {
-        for (j = 0; j < tls_instance_state->server.dbnum; j++) {
+        for (j = 0; j < server.dbnum; j++) {
             PORT_LONGLONG size, used, vkeys;
 
-            size = dictSlots(tls_instance_state->server.db[j].dict);
-            used = dictSize(tls_instance_state->server.db[j].dict);
-            vkeys = dictSize(tls_instance_state->server.db[j].expires);
+            size = dictSlots(server.db[j].dict);
+            used = dictSize(server.db[j].dict);
+            vkeys = dictSize(server.db[j].expires);
             if (used || vkeys) {
                 redisLog(REDIS_VERBOSE,"DB %d: %lld keys (%lld volatile) in %lld slots HT.",j,used,vkeys,size);
-                /* dictPrintStats(tls_instance_state->server.dict); */
+                /* dictPrintStats(server.dict); */
             }
         }
     }
 
     /* Show information about connected clients */
-    if (!tls_instance_state->server.sentinel_mode) {
+    if (!server.sentinel_mode) {
         run_with_period(5000) {
             redisLog(REDIS_VERBOSE,
                 "%Iu clients connected (%Iu slaves), %Iu bytes in use",         WIN_PORT_FIX /* %zu -> %Iu */
-                listLength(tls_instance_state->server.clients)-listLength(tls_instance_state->server.slaves),
-                listLength(tls_instance_state->server.slaves),
+                listLength(server.clients)-listLength(server.slaves),
+                listLength(server.slaves),
                 zmalloc_used_memory());
         }
     }
@@ -1103,14 +1103,14 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
-    if (tls_instance_state->server.rdb_child_pid == -1 && tls_instance_state->server.aof_child_pid == -1 &&
-        tls_instance_state->server.aof_rewrite_scheduled)
+    if (server.rdb_child_pid == -1 && server.aof_child_pid == -1 &&
+        server.aof_rewrite_scheduled)
     {
         rewriteAppendOnlyFileBackground();
     }
 
     /* Check if a background saving or AOF rewrite in progress terminated. */
-    if (tls_instance_state->server.rdb_child_pid != -1 || tls_instance_state->server.aof_child_pid != -1) {
+    if (server.rdb_child_pid != -1 || server.aof_child_pid != -1) {
 #ifdef _WIN32
         if (GetForkOperationStatus() == osCOMPLETE || GetForkOperationStatus() == osFAILED) {
             RequestSuspension();
@@ -1121,7 +1121,7 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
                 redisLog(REDIS_WARNING, (bySignal ? "fork operation failed" : "fork operation complete"));
                 EndForkOperation(&exitCode);
                 ResumeFromSuspension();
-                if (tls_instance_state->server.rdb_child_pid != -1) {
+                if (server.rdb_child_pid != -1) {
                     backgroundSaveDoneHandler(exitCode, bySignal);
                 } else {
                     backgroundRewriteDoneHandler(exitCode, bySignal);
@@ -1139,9 +1139,9 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
 
             if (WIFSIGNALED(statloc)) bysignal = WTERMSIG(statloc);
 
-            if (pid == tls_instance_state->server.rdb_child_pid) {
+            if (pid == server.rdb_child_pid) {
                 backgroundSaveDoneHandler(exitcode,bysignal);
-            } else if (pid == tls_instance_state->server.aof_child_pid) {
+            } else if (pid == server.aof_child_pid) {
                 backgroundRewriteDoneHandler(exitcode,bysignal);
             } else {
                 redisLog(REDIS_WARNING,
@@ -1154,36 +1154,36 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
     } else {
         /* If there is not a background saving/rewrite in progress check if
          * we have to save/rewrite now */
-         for (j = 0; j < tls_instance_state->server.saveparamslen; j++) {
-            struct saveparam *sp = tls_instance_state->server.saveparams+j;
+         for (j = 0; j < server.saveparamslen; j++) {
+            struct saveparam *sp = server.saveparams+j;
 
             /* Save if we reached the given amount of changes,
              * the given amount of seconds, and if the latest bgsave was
              * successful or if, in case of an error, at least
              * REDIS_BGSAVE_RETRY_DELAY seconds already elapsed. */
-            if (tls_instance_state->server.dirty >= sp->changes &&
-                tls_instance_state->server.unixtime-tls_instance_state->server.lastsave > sp->seconds &&
-                (tls_instance_state->server.unixtime-tls_instance_state->server.lastbgsave_try >
+            if (server.dirty >= sp->changes &&
+                server.unixtime-server.lastsave > sp->seconds &&
+                (server.unixtime-server.lastbgsave_try >
                  REDIS_BGSAVE_RETRY_DELAY ||
-                 tls_instance_state->server.lastbgsave_status == REDIS_OK))
+                 server.lastbgsave_status == REDIS_OK))
             {
                 redisLog(REDIS_NOTICE,"%d changes in %d seconds. Saving...",
                     sp->changes, (int)sp->seconds);
-                rdbSaveBackground(tls_instance_state->server.rdb_filename);
+                rdbSaveBackground(server.rdb_filename);
                 break;
             }
          }
 
          /* Trigger an AOF rewrite if needed */
-         if (tls_instance_state->server.rdb_child_pid == -1 &&
-             tls_instance_state->server.aof_child_pid == -1 &&
-             tls_instance_state->server.aof_rewrite_perc &&
-             tls_instance_state->server.aof_current_size > tls_instance_state->server.aof_rewrite_min_size)
+         if (server.rdb_child_pid == -1 &&
+             server.aof_child_pid == -1 &&
+             server.aof_rewrite_perc &&
+             server.aof_current_size > server.aof_rewrite_min_size)
          {
-            PORT_LONGLONG base = tls_instance_state->server.aof_rewrite_base_size ?
-                            tls_instance_state->server.aof_rewrite_base_size : 1;
-            PORT_LONGLONG growth = (tls_instance_state->server.aof_current_size*100/base) - 100;
-            if (growth >= tls_instance_state->server.aof_rewrite_perc) {
+            PORT_LONGLONG base = server.aof_rewrite_base_size ?
+                            server.aof_rewrite_base_size : 1;
+            PORT_LONGLONG growth = (server.aof_current_size*100/base) - 100;
+            if (growth >= server.aof_rewrite_perc) {
                 redisLog(REDIS_NOTICE,"Starting automatic rewriting of AOF on %lld%% growth",growth);
                 rewriteAppendOnlyFileBackground();
             }
@@ -1193,14 +1193,14 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
 
     /* AOF postponed flush: Try at every cron cycle if the slow fsync
      * completed. */
-    if (tls_instance_state->server.aof_flush_postponed_start) flushAppendOnlyFile(0);
+    if (server.aof_flush_postponed_start) flushAppendOnlyFile(0);
 
     /* AOF write errors: in this case we have a buffer to flush as well and
      * clear the AOF error in case of success to make the DB writable again,
      * however to try every second is enough in case of 'hz' is set to
      * an higher frequency. */
     run_with_period(1000) {
-        if (tls_instance_state->server.aof_last_write_status == REDIS_ERR)
+        if (server.aof_last_write_status == REDIS_ERR)
             flushAppendOnlyFile(0);
     }
 
@@ -1213,11 +1213,11 @@ int serverCron(struct aeEventLoop *eventLoop, PORT_LONGLONG id, void *clientData
 
     /* Run the sentinel timer if we are in sentinel mode. */
     run_with_period(100) {
-        if (tls_instance_state->server.sentinel_mode) sentinelTimer();
+        if (server.sentinel_mode) sentinelTimer();
     }
 
-    tls_instance_state->server.cronloops++;
-    return 1000/tls_instance_state->server.hz;
+    server.cronloops++;
+    return 1000/server.hz;
 }
 
 /* This function gets called every time Redis is entering the
@@ -1230,22 +1230,22 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 
     /* Run a fast expire cycle (the called function will return
      * ASAP if a fast cycle is not needed). */
-    if (tls_instance_state->server.active_expire_enabled && tls_instance_state->server.masterhost == NULL)
+    if (server.active_expire_enabled && server.masterhost == NULL)
         activeExpireCycle(ACTIVE_EXPIRE_CYCLE_FAST);
 
     /* Try to process pending commands for clients that were just unblocked. */
-    while (listLength(tls_instance_state->server.unblocked_clients)) {
-        ln = listFirst(tls_instance_state->server.unblocked_clients);
+    while (listLength(server.unblocked_clients)) {
+        ln = listFirst(server.unblocked_clients);
         redisAssert(ln != NULL);
         c = ln->value;
-        listDelNode(tls_instance_state->server.unblocked_clients,ln);
+        listDelNode(server.unblocked_clients,ln);
         c->flags &= ~REDIS_UNBLOCKED;
 
         /* Process remaining data in the input buffer. */
         if (c->querybuf && sdslen(c->querybuf) > 0) {
-            tls_instance_state->server.current_client = c;
+            server.current_client = c;
             processInputBuffer(c);
-            tls_instance_state->server.current_client = NULL;
+            server.current_client = NULL;
         }
     }
 
@@ -1346,84 +1346,84 @@ void createSharedObjects(void) {
 void initServerConfig(void) {
     int j;
 
-    getRandomHexChars(tls_instance_state->server.runid,REDIS_RUN_ID_SIZE);
-    tls_instance_state->server.configfile = NULL;
-    tls_instance_state->server.hz = REDIS_DEFAULT_HZ;
-    tls_instance_state->server.runid[REDIS_RUN_ID_SIZE] = '\0';
-    tls_instance_state->server.arch_bits = (sizeof(PORT_LONG) == 8) ? 64 : 32;
-    tls_instance_state->server.port = REDIS_SERVERPORT;
-    tls_instance_state->server.tcp_backlog = REDIS_TCP_BACKLOG;
-    tls_instance_state->server.bindaddr_count = 0;
-    tls_instance_state->server.unixsocket = NULL;
-    tls_instance_state->server.unixsocketperm = REDIS_DEFAULT_UNIX_SOCKET_PERM;
-    tls_instance_state->server.ipfd_count = 0;
-    tls_instance_state->server.sofd = -1;
-    tls_instance_state->server.dbnum = REDIS_DEFAULT_DBNUM;
-    tls_instance_state->server.verbosity = REDIS_DEFAULT_VERBOSITY;
+    getRandomHexChars(server.runid,REDIS_RUN_ID_SIZE);
+    server.configfile = NULL;
+    server.hz = REDIS_DEFAULT_HZ;
+    server.runid[REDIS_RUN_ID_SIZE] = '\0';
+    server.arch_bits = (sizeof(PORT_LONG) == 8) ? 64 : 32;
+    server.port = REDIS_SERVERPORT;
+    server.tcp_backlog = REDIS_TCP_BACKLOG;
+    server.bindaddr_count = 0;
+    server.unixsocket = NULL;
+    server.unixsocketperm = REDIS_DEFAULT_UNIX_SOCKET_PERM;
+    server.ipfd_count = 0;
+    server.sofd = -1;
+    server.dbnum = REDIS_DEFAULT_DBNUM;
+    server.verbosity = REDIS_DEFAULT_VERBOSITY;
 #ifdef _WIN32
-    setLogVerbosityLevel(tls_instance_state->server.verbosity);
+    setLogVerbosityLevel(server.verbosity);
 #endif
-    tls_instance_state->server.maxidletime = REDIS_MAXIDLETIME;
-    tls_instance_state->server.tcpkeepalive = REDIS_DEFAULT_TCP_KEEPALIVE;
-    tls_instance_state->server.active_expire_enabled = 1;
-    tls_instance_state->server.client_max_querybuf_len = REDIS_MAX_QUERYBUF_LEN;
-    tls_instance_state->server.saveparams = NULL;
-    tls_instance_state->server.loading = 0;
-    tls_instance_state->server.logfile = zstrdup(REDIS_DEFAULT_LOGFILE);
-    tls_instance_state->server.syslog_enabled = REDIS_DEFAULT_SYSLOG_ENABLED;
-    tls_instance_state->server.syslog_ident = zstrdup(REDIS_DEFAULT_SYSLOG_IDENT);
-    tls_instance_state->server.syslog_facility = LOG_LOCAL0;
-    tls_instance_state->server.daemonize = REDIS_DEFAULT_DAEMONIZE;
-    tls_instance_state->server.aof_state = REDIS_AOF_OFF;
-    tls_instance_state->server.aof_fsync = REDIS_DEFAULT_AOF_FSYNC;
-    tls_instance_state->server.aof_no_fsync_on_rewrite = REDIS_DEFAULT_AOF_NO_FSYNC_ON_REWRITE;
-    tls_instance_state->server.aof_rewrite_perc = REDIS_AOF_REWRITE_PERC;
-    tls_instance_state->server.aof_rewrite_min_size = REDIS_AOF_REWRITE_MIN_SIZE;
-    tls_instance_state->server.aof_rewrite_base_size = 0;
-    tls_instance_state->server.aof_rewrite_scheduled = 0;
-    tls_instance_state->server.aof_last_fsync = time(NULL);
-    tls_instance_state->server.aof_rewrite_time_last = -1;
-    tls_instance_state->server.aof_rewrite_time_start = -1;
-    tls_instance_state->server.aof_lastbgrewrite_status = REDIS_OK;
-    tls_instance_state->server.aof_delayed_fsync = 0;
-    tls_instance_state->server.aof_fd = -1;
-    tls_instance_state->server.aof_selected_db = -1; /* Make sure the first time will not match */
-    tls_instance_state->server.aof_flush_postponed_start = 0;
-    tls_instance_state->server.aof_rewrite_incremental_fsync = REDIS_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC;
-    tls_instance_state->server.aof_load_truncated = REDIS_DEFAULT_AOF_LOAD_TRUNCATED;
-    tls_instance_state->server.pidfile = zstrdup(REDIS_DEFAULT_PID_FILE);
-    tls_instance_state->server.rdb_filename = zstrdup(REDIS_DEFAULT_RDB_FILENAME);
-    tls_instance_state->server.aof_filename = zstrdup(REDIS_DEFAULT_AOF_FILENAME);
-    tls_instance_state->server.requirepass = NULL;
-    tls_instance_state->server.rdb_compression = REDIS_DEFAULT_RDB_COMPRESSION;
-    tls_instance_state->server.rdb_checksum = REDIS_DEFAULT_RDB_CHECKSUM;
-    tls_instance_state->server.stop_writes_on_bgsave_err = REDIS_DEFAULT_STOP_WRITES_ON_BGSAVE_ERROR;
-    tls_instance_state->server.activerehashing = REDIS_DEFAULT_ACTIVE_REHASHING;
-    tls_instance_state->server.notify_keyspace_events = 0;
-    tls_instance_state->server.maxclients = REDIS_MAX_CLIENTS;
-    tls_instance_state->server.bpop_blocked_clients = 0;
-    tls_instance_state->server.maxmemory = REDIS_DEFAULT_MAXMEMORY;
-    tls_instance_state->server.maxmemory_policy = REDIS_DEFAULT_MAXMEMORY_POLICY;
-    tls_instance_state->server.maxmemory_samples = REDIS_DEFAULT_MAXMEMORY_SAMPLES;
-    tls_instance_state->server.hash_max_ziplist_entries = REDIS_HASH_MAX_ZIPLIST_ENTRIES;
-    tls_instance_state->server.hash_max_ziplist_value = REDIS_HASH_MAX_ZIPLIST_VALUE;
-    tls_instance_state->server.list_max_ziplist_entries = REDIS_LIST_MAX_ZIPLIST_ENTRIES;
-    tls_instance_state->server.list_max_ziplist_value = REDIS_LIST_MAX_ZIPLIST_VALUE;
-    tls_instance_state->server.set_max_intset_entries = REDIS_SET_MAX_INTSET_ENTRIES;
-    tls_instance_state->server.zset_max_ziplist_entries = REDIS_ZSET_MAX_ZIPLIST_ENTRIES;
-    tls_instance_state->server.zset_max_ziplist_value = REDIS_ZSET_MAX_ZIPLIST_VALUE;
-    tls_instance_state->server.hll_sparse_max_bytes = REDIS_DEFAULT_HLL_SPARSE_MAX_BYTES;
-    tls_instance_state->server.shutdown_asap = 0;
-    tls_instance_state->server.repl_ping_slave_period = REDIS_REPL_PING_SLAVE_PERIOD;
-    tls_instance_state->server.repl_timeout = REDIS_REPL_TIMEOUT;
-    tls_instance_state->server.repl_min_slaves_to_write = REDIS_DEFAULT_MIN_SLAVES_TO_WRITE;
-    tls_instance_state->server.repl_min_slaves_max_lag = REDIS_DEFAULT_MIN_SLAVES_MAX_LAG;
-    tls_instance_state->server.lua_caller = NULL;
-    tls_instance_state->server.lua_time_limit = REDIS_LUA_TIME_LIMIT;
-    tls_instance_state->server.lua_client = NULL;
-    tls_instance_state->server.lua_timedout = 0;
-    tls_instance_state->server.next_client_id = 1; /* Client IDs, start from 1 .*/
-    tls_instance_state->server.loading_process_events_interval_bytes = (1024*1024*2);
+    server.maxidletime = REDIS_MAXIDLETIME;
+    server.tcpkeepalive = REDIS_DEFAULT_TCP_KEEPALIVE;
+    server.active_expire_enabled = 1;
+    server.client_max_querybuf_len = REDIS_MAX_QUERYBUF_LEN;
+    server.saveparams = NULL;
+    server.loading = 0;
+    server.logfile = zstrdup(REDIS_DEFAULT_LOGFILE);
+    server.syslog_enabled = REDIS_DEFAULT_SYSLOG_ENABLED;
+    server.syslog_ident = zstrdup(REDIS_DEFAULT_SYSLOG_IDENT);
+    server.syslog_facility = LOG_LOCAL0;
+    server.daemonize = REDIS_DEFAULT_DAEMONIZE;
+    server.aof_state = REDIS_AOF_OFF;
+    server.aof_fsync = REDIS_DEFAULT_AOF_FSYNC;
+    server.aof_no_fsync_on_rewrite = REDIS_DEFAULT_AOF_NO_FSYNC_ON_REWRITE;
+    server.aof_rewrite_perc = REDIS_AOF_REWRITE_PERC;
+    server.aof_rewrite_min_size = REDIS_AOF_REWRITE_MIN_SIZE;
+    server.aof_rewrite_base_size = 0;
+    server.aof_rewrite_scheduled = 0;
+    server.aof_last_fsync = time(NULL);
+    server.aof_rewrite_time_last = -1;
+    server.aof_rewrite_time_start = -1;
+    server.aof_lastbgrewrite_status = REDIS_OK;
+    server.aof_delayed_fsync = 0;
+    server.aof_fd = -1;
+    server.aof_selected_db = -1; /* Make sure the first time will not match */
+    server.aof_flush_postponed_start = 0;
+    server.aof_rewrite_incremental_fsync = REDIS_DEFAULT_AOF_REWRITE_INCREMENTAL_FSYNC;
+    server.aof_load_truncated = REDIS_DEFAULT_AOF_LOAD_TRUNCATED;
+    server.pidfile = zstrdup(REDIS_DEFAULT_PID_FILE);
+    server.rdb_filename = zstrdup(REDIS_DEFAULT_RDB_FILENAME);
+    server.aof_filename = zstrdup(REDIS_DEFAULT_AOF_FILENAME);
+    server.requirepass = NULL;
+    server.rdb_compression = REDIS_DEFAULT_RDB_COMPRESSION;
+    server.rdb_checksum = REDIS_DEFAULT_RDB_CHECKSUM;
+    server.stop_writes_on_bgsave_err = REDIS_DEFAULT_STOP_WRITES_ON_BGSAVE_ERROR;
+    server.activerehashing = REDIS_DEFAULT_ACTIVE_REHASHING;
+    server.notify_keyspace_events = 0;
+    server.maxclients = REDIS_MAX_CLIENTS;
+    server.bpop_blocked_clients = 0;
+    server.maxmemory = REDIS_DEFAULT_MAXMEMORY;
+    server.maxmemory_policy = REDIS_DEFAULT_MAXMEMORY_POLICY;
+    server.maxmemory_samples = REDIS_DEFAULT_MAXMEMORY_SAMPLES;
+    server.hash_max_ziplist_entries = REDIS_HASH_MAX_ZIPLIST_ENTRIES;
+    server.hash_max_ziplist_value = REDIS_HASH_MAX_ZIPLIST_VALUE;
+    server.list_max_ziplist_entries = REDIS_LIST_MAX_ZIPLIST_ENTRIES;
+    server.list_max_ziplist_value = REDIS_LIST_MAX_ZIPLIST_VALUE;
+    server.set_max_intset_entries = REDIS_SET_MAX_INTSET_ENTRIES;
+    server.zset_max_ziplist_entries = REDIS_ZSET_MAX_ZIPLIST_ENTRIES;
+    server.zset_max_ziplist_value = REDIS_ZSET_MAX_ZIPLIST_VALUE;
+    server.hll_sparse_max_bytes = REDIS_DEFAULT_HLL_SPARSE_MAX_BYTES;
+    server.shutdown_asap = 0;
+    server.repl_ping_slave_period = REDIS_REPL_PING_SLAVE_PERIOD;
+    server.repl_timeout = REDIS_REPL_TIMEOUT;
+    server.repl_min_slaves_to_write = REDIS_DEFAULT_MIN_SLAVES_TO_WRITE;
+    server.repl_min_slaves_max_lag = REDIS_DEFAULT_MIN_SLAVES_MAX_LAG;
+    server.lua_caller = NULL;
+    server.lua_time_limit = REDIS_LUA_TIME_LIMIT;
+    server.lua_client = NULL;
+    server.lua_timedout = 0;
+    server.next_client_id = 1; /* Client IDs, start from 1 .*/
+    server.loading_process_events_interval_bytes = (1024*1024*2);
 
     updateLRUClock();
     resetServerSaveParams();
@@ -1432,35 +1432,35 @@ void initServerConfig(void) {
     appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
     appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
     /* Replication related */
-    tls_instance_state->server.masterauth = NULL;
-    tls_instance_state->server.masterhost = NULL;
-    tls_instance_state->server.masterport = 6379;
-    tls_instance_state->server.master = NULL;
-    tls_instance_state->server.cached_master = NULL;
-    tls_instance_state->server.repl_master_initial_offset = -1;
-    tls_instance_state->server.repl_state = REDIS_REPL_NONE;
-    tls_instance_state->server.repl_syncio_timeout = REDIS_REPL_SYNCIO_TIMEOUT;
-    tls_instance_state->server.repl_serve_stale_data = REDIS_DEFAULT_SLAVE_SERVE_STALE_DATA;
-    tls_instance_state->server.repl_slave_ro = REDIS_DEFAULT_SLAVE_READ_ONLY;
-    tls_instance_state->server.repl_down_since = 0; /* Never connected, repl is down since EVER. */
-    tls_instance_state->server.repl_disable_tcp_nodelay = REDIS_DEFAULT_REPL_DISABLE_TCP_NODELAY;
-    tls_instance_state->server.repl_diskless_sync = REDIS_DEFAULT_REPL_DISKLESS_SYNC;
-    tls_instance_state->server.repl_diskless_sync_delay = REDIS_DEFAULT_REPL_DISKLESS_SYNC_DELAY;
-    tls_instance_state->server.slave_priority = REDIS_DEFAULT_SLAVE_PRIORITY;
-    tls_instance_state->server.master_repl_offset = 0;
+    server.masterauth = NULL;
+    server.masterhost = NULL;
+    server.masterport = 6379;
+    server.master = NULL;
+    server.cached_master = NULL;
+    server.repl_master_initial_offset = -1;
+    server.repl_state = REDIS_REPL_NONE;
+    server.repl_syncio_timeout = REDIS_REPL_SYNCIO_TIMEOUT;
+    server.repl_serve_stale_data = REDIS_DEFAULT_SLAVE_SERVE_STALE_DATA;
+    server.repl_slave_ro = REDIS_DEFAULT_SLAVE_READ_ONLY;
+    server.repl_down_since = 0; /* Never connected, repl is down since EVER. */
+    server.repl_disable_tcp_nodelay = REDIS_DEFAULT_REPL_DISABLE_TCP_NODELAY;
+    server.repl_diskless_sync = REDIS_DEFAULT_REPL_DISKLESS_SYNC;
+    server.repl_diskless_sync_delay = REDIS_DEFAULT_REPL_DISKLESS_SYNC_DELAY;
+    server.slave_priority = REDIS_DEFAULT_SLAVE_PRIORITY;
+    server.master_repl_offset = 0;
 
     /* Replication partial resync backlog */
-    tls_instance_state->server.repl_backlog = NULL;
-    tls_instance_state->server.repl_backlog_size = REDIS_DEFAULT_REPL_BACKLOG_SIZE;
-    tls_instance_state->server.repl_backlog_histlen = 0;
-    tls_instance_state->server.repl_backlog_idx = 0;
-    tls_instance_state->server.repl_backlog_off = 0;
-    tls_instance_state->server.repl_backlog_time_limit = REDIS_DEFAULT_REPL_BACKLOG_TIME_LIMIT;
-    tls_instance_state->server.repl_no_slaves_since = time(NULL);
+    server.repl_backlog = NULL;
+    server.repl_backlog_size = REDIS_DEFAULT_REPL_BACKLOG_SIZE;
+    server.repl_backlog_histlen = 0;
+    server.repl_backlog_idx = 0;
+    server.repl_backlog_off = 0;
+    server.repl_backlog_time_limit = REDIS_DEFAULT_REPL_BACKLOG_TIME_LIMIT;
+    server.repl_no_slaves_since = time(NULL);
 
     /* Client output buffer limits */
     for (j = 0; j < REDIS_CLIENT_TYPE_COUNT; j++)
-        tls_instance_state->server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
+        server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
 
     /* Double constants initialization */
     R_Zero = 0.0;
@@ -1471,28 +1471,28 @@ void initServerConfig(void) {
     /* Command table -- we initiialize it here as it is part of the
      * initial configuration, since command names may be changed via
      * redis.conf using the rename-command directive. */
-    tls_instance_state->server.commands = dictCreate(&commandTableDictType,NULL);
-    tls_instance_state->server.orig_commands = dictCreate(&commandTableDictType,NULL);
+    server.commands = dictCreate(&commandTableDictType,NULL);
+    server.orig_commands = dictCreate(&commandTableDictType,NULL);
     populateCommandTable();
-    tls_instance_state->server.delCommand = lookupCommandByCString("del");
-    tls_instance_state->server.multiCommand = lookupCommandByCString("multi");
-    tls_instance_state->server.lpushCommand = lookupCommandByCString("lpush");
-    tls_instance_state->server.lpopCommand = lookupCommandByCString("lpop");
-    tls_instance_state->server.rpopCommand = lookupCommandByCString("rpop");
+    server.delCommand = lookupCommandByCString("del");
+    server.multiCommand = lookupCommandByCString("multi");
+    server.lpushCommand = lookupCommandByCString("lpush");
+    server.lpopCommand = lookupCommandByCString("lpop");
+    server.rpopCommand = lookupCommandByCString("rpop");
 
     /* Slow log */
-    tls_instance_state->server.slowlog_log_slower_than = REDIS_SLOWLOG_LOG_SLOWER_THAN;
-    tls_instance_state->server.slowlog_max_len = REDIS_SLOWLOG_MAX_LEN;
+    server.slowlog_log_slower_than = REDIS_SLOWLOG_LOG_SLOWER_THAN;
+    server.slowlog_max_len = REDIS_SLOWLOG_MAX_LEN;
 
     /* Latency monitor */
-    tls_instance_state->server.latency_monitor_threshold = REDIS_DEFAULT_LATENCY_MONITOR_THRESHOLD;
+    server.latency_monitor_threshold = REDIS_DEFAULT_LATENCY_MONITOR_THRESHOLD;
 
     /* Debugging */
-    tls_instance_state->server.assert_failed = "<no assertion failed>";
-    tls_instance_state->server.assert_file = "<no file>";
-    tls_instance_state->server.assert_line = 0;
-    tls_instance_state->server.bug_report_start = 0;
-    tls_instance_state->server.watchdog_period = 0;
+    server.assert_failed = "<no assertion failed>";
+    server.assert_file = "<no file>";
+    server.assert_line = 0;
+    server.bug_report_start = 0;
+    server.watchdog_period = 0;
 }
 
 /* This function will try to raise the max number of open files accordingly to
@@ -1502,16 +1502,16 @@ void initServerConfig(void) {
  *
  * If it will not be possible to set the limit accordingly to the configured
  * max number of clients, the function will do the reverse setting
- * tls_instance_state->server.maxclients to the value that we can actually handle. */
+ * server.maxclients to the value that we can actually handle. */
 void adjustOpenFilesLimit(void) {
 #ifndef _WIN32
-    rlim_t maxfiles = tls_instance_state->server.maxclients+REDIS_MIN_RESERVED_FDS;
+    rlim_t maxfiles = server.maxclients+REDIS_MIN_RESERVED_FDS;
     struct rlimit limit;
 
     if (getrlimit(RLIMIT_NOFILE,&limit) == -1) {
         redisLog(REDIS_WARNING,"Unable to obtain the current NOFILE limit (%s), assuming 1024 and setting the max clients configuration accordingly.",
             strerror(errno));
-        tls_instance_state->server.maxclients = 1024-REDIS_MIN_RESERVED_FDS;
+        server.maxclients = 1024-REDIS_MIN_RESERVED_FDS;
     } else {
         rlim_t oldlimit = limit.rlim_cur;
 
@@ -1543,9 +1543,9 @@ void adjustOpenFilesLimit(void) {
             if (bestlimit < oldlimit) bestlimit = oldlimit;
 
             if (bestlimit < maxfiles) {
-                int old_maxclients = tls_instance_state->server.maxclients;
-                tls_instance_state->server.maxclients = bestlimit-REDIS_MIN_RESERVED_FDS;
-                if (tls_instance_state->server.maxclients < 1) {
+                int old_maxclients = server.maxclients;
+                server.maxclients = bestlimit-REDIS_MIN_RESERVED_FDS;
+                if (server.maxclients < 1) {
                     redisLog(REDIS_WARNING,"Your current 'ulimit -n' "
                         "of %llu is not enough for Redis to start. "
                         "Please increase your open file limit to at least "
@@ -1565,7 +1565,7 @@ void adjustOpenFilesLimit(void) {
                     "maxclients has been reduced to %d to compensate for "
                     "low ulimit. "
                     "If you need higher maxclients increase 'ulimit -n'.",
-                    (PORT_ULONGLONG) bestlimit, tls_instance_state->server.maxclients);
+                    (PORT_ULONGLONG) bestlimit, server.maxclients);
             } else {
                 redisLog(REDIS_NOTICE,"Increased maximum number of open files "
                     "to %llu (it was originally set to %llu).",
@@ -1577,7 +1577,7 @@ void adjustOpenFilesLimit(void) {
 #endif
 }
 
-/* Check that tls_instance_state->server.tcp_backlog can be actually enforced in Linux according
+/* Check that server.tcp_backlog can be actually enforced in Linux according
  * to the value of /proc/sys/net/core/somaxconn, or warn about it. */
 void checkTcpBacklogSettings(void) {
 #ifdef HAVE_PROC_SOMAXCONN
@@ -1586,8 +1586,8 @@ void checkTcpBacklogSettings(void) {
     if (!fp) return;
     if (fgets(buf,sizeof(buf),fp) != NULL) {
         int somaxconn = atoi(buf);
-        if (somaxconn > 0 && somaxconn < tls_instance_state->server.tcp_backlog) {
-            redisLog(REDIS_WARNING,"WARNING: The TCP backlog setting of %d cannot be enforced because /proc/sys/net/core/somaxconn is set to the lower value of %d.", tls_instance_state->server.tcp_backlog, somaxconn);
+        if (somaxconn > 0 && somaxconn < server.tcp_backlog) {
+            redisLog(REDIS_WARNING,"WARNING: The TCP backlog setting of %d cannot be enforced because /proc/sys/net/core/somaxconn is set to the lower value of %d.", server.tcp_backlog, somaxconn);
         }
     }
     fclose(fp);
@@ -1600,15 +1600,15 @@ void checkTcpBacklogSettings(void) {
  * The listening file descriptors are stored in the integer array 'fds'
  * and their number is set in '*count'.
  *
- * The addresses to bind are specified in the global tls_instance_state->server.bindaddr array
- * and their number is tls_instance_state->server.bindaddr_count. If the server configuration
+ * The addresses to bind are specified in the global server.bindaddr array
+ * and their number is server.bindaddr_count. If the server configuration
  * contains no specific addresses to bind, this function will try to
  * bind * (all addresses) for both the IPv4 and IPv6 protocols.
  *
  * On success the function returns REDIS_OK.
  *
  * On error the function returns REDIS_ERR. For the function to be on
- * error, at least one of the tls_instance_state->server.bindaddr addresses was
+ * error, at least one of the server.bindaddr addresses was
  * impossible to bind, or no bind addresses were specified in the server
  * configuration but the function is not able to bind * for at least
  * one of the IPv4 or IPv6 protocols. */
@@ -1617,19 +1617,19 @@ int listenToPort(int port, int *fds, int *count) {
 
     /* Force binding of 0.0.0.0 if no bind address is specified, always
      * entering the loop if j == 0. */
-    if (tls_instance_state->server.bindaddr_count == 0) tls_instance_state->server.bindaddr[0] = NULL;
-    for (j = 0; j < tls_instance_state->server.bindaddr_count || j == 0; j++) {
-        if (tls_instance_state->server.bindaddr[j] == NULL) {
+    if (server.bindaddr_count == 0) server.bindaddr[0] = NULL;
+    for (j = 0; j < server.bindaddr_count || j == 0; j++) {
+        if (server.bindaddr[j] == NULL) {
             /* Bind * for both IPv6 and IPv4, we enter here only if
-             * tls_instance_state->server.bindaddr_count == 0. */
-            fds[*count] = anetTcp6Server(tls_instance_state->server.neterr,port,NULL,
-                tls_instance_state->server.tcp_backlog);
+             * server.bindaddr_count == 0. */
+            fds[*count] = anetTcp6Server(server.neterr,port,NULL,
+                server.tcp_backlog);
             if (fds[*count] != ANET_ERR) {
                 anetNonBlock(NULL,fds[*count]);
                 (*count)++;
             }
-            fds[*count] = anetTcpServer(tls_instance_state->server.neterr,port,NULL,
-                tls_instance_state->server.tcp_backlog);
+            fds[*count] = anetTcpServer(server.neterr,port,NULL,
+                server.tcp_backlog);
             if (fds[*count] != ANET_ERR) {
                 anetNonBlock(NULL,fds[*count]);
                 (*count)++;
@@ -1638,20 +1638,20 @@ int listenToPort(int port, int *fds, int *count) {
              * otherwise fds[*count] will be ANET_ERR and we'll print an
              * error and return to the caller with an error. */
             if (*count) break;
-        } else if (strchr(tls_instance_state->server.bindaddr[j],':')) {
+        } else if (strchr(server.bindaddr[j],':')) {
             /* Bind IPv6 address. */
-            fds[*count] = anetTcp6Server(tls_instance_state->server.neterr,port,tls_instance_state->server.bindaddr[j],
-                tls_instance_state->server.tcp_backlog);
+            fds[*count] = anetTcp6Server(server.neterr,port,server.bindaddr[j],
+                server.tcp_backlog);
         } else {
             /* Bind IPv4 address. */
-            fds[*count] = anetTcpServer(tls_instance_state->server.neterr,port,tls_instance_state->server.bindaddr[j],
-                tls_instance_state->server.tcp_backlog);
+            fds[*count] = anetTcpServer(server.neterr,port,server.bindaddr[j],
+                server.tcp_backlog);
         }
         if (fds[*count] == ANET_ERR) {
             redisLog(REDIS_WARNING,
                 "Creating Server TCP listening socket %s:%d: %s",
-                tls_instance_state->server.bindaddr[j] ? tls_instance_state->server.bindaddr[j] : "*",
-                tls_instance_state->server.port, tls_instance_state->server.neterr);
+                server.bindaddr[j] ? server.bindaddr[j] : "*",
+                server.port, server.neterr);
             return REDIS_ERR;
         }
         anetNonBlock(NULL,fds[*count]);
@@ -1666,27 +1666,27 @@ int listenToPort(int port, int *fds, int *count) {
 void resetServerStats(void) {
     int j;
 
-    tls_instance_state->server.stat_numcommands = 0;
-    tls_instance_state->server.stat_numconnections = 0;
-    tls_instance_state->server.stat_expiredkeys = 0;
-    tls_instance_state->server.stat_evictedkeys = 0;
-    tls_instance_state->server.stat_keyspace_misses = 0;
-    tls_instance_state->server.stat_keyspace_hits = 0;
-    tls_instance_state->server.stat_fork_time = 0;
-    tls_instance_state->server.stat_fork_rate = 0;
-    tls_instance_state->server.stat_rejected_conn = 0;
-    tls_instance_state->server.stat_sync_full = 0;
-    tls_instance_state->server.stat_sync_partial_ok = 0;
-    tls_instance_state->server.stat_sync_partial_err = 0;
+    server.stat_numcommands = 0;
+    server.stat_numconnections = 0;
+    server.stat_expiredkeys = 0;
+    server.stat_evictedkeys = 0;
+    server.stat_keyspace_misses = 0;
+    server.stat_keyspace_hits = 0;
+    server.stat_fork_time = 0;
+    server.stat_fork_rate = 0;
+    server.stat_rejected_conn = 0;
+    server.stat_sync_full = 0;
+    server.stat_sync_partial_ok = 0;
+    server.stat_sync_partial_err = 0;
     for (j = 0; j < REDIS_METRIC_COUNT; j++) {
-        tls_instance_state->server.inst_metric[j].idx = 0;
-        tls_instance_state->server.inst_metric[j].last_sample_time = mstime();
-        tls_instance_state->server.inst_metric[j].last_sample_count = 0;
-        memset(tls_instance_state->server.inst_metric[j].samples,0,
-            sizeof(tls_instance_state->server.inst_metric[j].samples));
+        server.inst_metric[j].idx = 0;
+        server.inst_metric[j].last_sample_time = mstime();
+        server.inst_metric[j].last_sample_count = 0;
+        memset(server.inst_metric[j].samples,0,
+            sizeof(server.inst_metric[j].samples));
     }
-    tls_instance_state->server.stat_net_input_bytes = 0;
-    tls_instance_state->server.stat_net_output_bytes = 0;
+    server.stat_net_input_bytes = 0;
+    server.stat_net_output_bytes = 0;
 }
 
 void initServer(void) {
@@ -1700,9 +1700,9 @@ void initServer(void) {
     //setupSignalHandlers();
 
 #ifndef _WIN32
-    if (tls_instance_state->server.syslog_enabled) {
-        openlog(tls_instance_state->server.syslog_ident, LOG_PID | LOG_NDELAY | LOG_NOWAIT,
-            tls_instance_state->server.syslog_facility);
+    if (server.syslog_enabled) {
+        openlog(server.syslog_ident, LOG_PID | LOG_NDELAY | LOG_NOWAIT,
+            server.syslog_facility);
     }
 #endif
 
@@ -1721,83 +1721,83 @@ void initServer(void) {
     RtlGenRandom = (RtlGenRandomFunc)GetProcAddress(lib, "SystemFunction036");
 #endif
 
-    tls_instance_state->server.current_client = NULL;
-    tls_instance_state->server.clients = listCreate();
-    tls_instance_state->server.clients_to_close = listCreate();
-    tls_instance_state->server.slaves = listCreate();
-    tls_instance_state->server.monitors = listCreate();
-    tls_instance_state->server.slaveseldb = -1; /* Force to emit the first SELECT command. */
-    tls_instance_state->server.unblocked_clients = listCreate();
-    tls_instance_state->server.ready_keys = listCreate();
+    server.current_client = NULL;
+    server.clients = listCreate();
+    server.clients_to_close = listCreate();
+    server.slaves = listCreate();
+    server.monitors = listCreate();
+    server.slaveseldb = -1; /* Force to emit the first SELECT command. */
+    server.unblocked_clients = listCreate();
+    server.ready_keys = listCreate();
 
     createSharedObjects();
     adjustOpenFilesLimit();
-    tls_instance_state->server.el = aeCreateEventLoop(tls_instance_state->server.maxclients+REDIS_EVENTLOOP_FDSET_INCR);
-    tls_instance_state->server.db = zmalloc(sizeof(redisDb)*tls_instance_state->server.dbnum);
+    server.el = aeCreateEventLoop(server.maxclients+REDIS_EVENTLOOP_FDSET_INCR);
+    server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
 	
     /* Open the TCP listening socket for the user commands. */
 	/*
-    if (tls_instance_state->server.port != 0 &&
-        listenToPort(tls_instance_state->server.port,tls_instance_state->server.ipfd,&tls_instance_state->server.ipfd_count) == REDIS_ERR)
+    if (server.port != 0 &&
+        listenToPort(server.port,server.ipfd,&server.ipfd_count) == REDIS_ERR)
         exit(1);
 	*/
     /* Open the listening Unix domain socket. */
 	/*
-    if (tls_instance_state->server.unixsocket != NULL) {
-        unlink(tls_instance_state->server.unixsocket); 
-        tls_instance_state->server.sofd = anetUnixServer(tls_instance_state->server.neterr,tls_instance_state->server.unixsocket,
-            tls_instance_state->server.unixsocketperm, tls_instance_state->server.tcp_backlog);
-        if (tls_instance_state->server.sofd == ANET_ERR) {
-            redisLog(REDIS_WARNING, "Opening socket: %s", tls_instance_state->server.neterr);
+    if (server.unixsocket != NULL) {
+        unlink(server.unixsocket); 
+        server.sofd = anetUnixServer(server.neterr,server.unixsocket,
+            server.unixsocketperm, server.tcp_backlog);
+        if (server.sofd == ANET_ERR) {
+            redisLog(REDIS_WARNING, "Opening socket: %s", server.neterr);
             exit(1);
         }
-        anetNonBlock(NULL,tls_instance_state->server.sofd);
+        anetNonBlock(NULL,server.sofd);
     }
 	*/
 	
     /* Abort if there are no listening sockets at all. */
 	/*
-    if (tls_instance_state->server.ipfd_count == 0 && tls_instance_state->server.sofd < 0) {
+    if (server.ipfd_count == 0 && server.sofd < 0) {
         redisLog(REDIS_WARNING, "Configured to not listen anywhere, exiting.");
         exit(1);
     }
 	*/
 	
     /* Create the Redis databases, and initialize other internal state. */
-    for (j = 0; j < tls_instance_state->server.dbnum; j++) {
-        tls_instance_state->server.db[j].dict = dictCreate(&dbDictType,NULL);
-        tls_instance_state->server.db[j].expires = dictCreate(&keyptrDictType,NULL);
-        tls_instance_state->server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
-        tls_instance_state->server.db[j].ready_keys = dictCreate(&setDictType,NULL);
-        tls_instance_state->server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);
-        tls_instance_state->server.db[j].id = j;
-        tls_instance_state->server.db[j].avg_ttl = 0;
+    for (j = 0; j < server.dbnum; j++) {
+        server.db[j].dict = dictCreate(&dbDictType,NULL);
+        server.db[j].expires = dictCreate(&keyptrDictType,NULL);
+        server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
+        server.db[j].ready_keys = dictCreate(&setDictType,NULL);
+        server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);
+        server.db[j].id = j;
+        server.db[j].avg_ttl = 0;
     }
-    tls_instance_state->server.pubsub_channels = dictCreate(&keylistDictType,NULL);
-    tls_instance_state->server.pubsub_patterns = listCreate();
-    listSetFreeMethod(tls_instance_state->server.pubsub_patterns,freePubsubPattern);
-    listSetMatchMethod(tls_instance_state->server.pubsub_patterns,listMatchPubsubPattern);
-    tls_instance_state->server.cronloops = 0;
-    tls_instance_state->server.rdb_child_pid = -1;
-    tls_instance_state->server.aof_child_pid = -1;
-    tls_instance_state->server.rdb_child_type = REDIS_RDB_CHILD_TYPE_NONE;
+    server.pubsub_channels = dictCreate(&keylistDictType,NULL);
+    server.pubsub_patterns = listCreate();
+    listSetFreeMethod(server.pubsub_patterns,freePubsubPattern);
+    listSetMatchMethod(server.pubsub_patterns,listMatchPubsubPattern);
+    server.cronloops = 0;
+    server.rdb_child_pid = -1;
+    server.aof_child_pid = -1;
+    server.rdb_child_type = REDIS_RDB_CHILD_TYPE_NONE;
     aofRewriteBufferReset();
-    tls_instance_state->server.aof_buf = sdsempty();
-    tls_instance_state->server.lastsave = time(NULL); /* At startup we consider the DB saved. */
-    tls_instance_state->server.lastbgsave_try = 0;    /* At startup we never tried to BGSAVE. */
-    tls_instance_state->server.rdb_save_time_last = -1;
-    tls_instance_state->server.rdb_save_time_start = -1;
-    tls_instance_state->server.dirty = 0;
+    server.aof_buf = sdsempty();
+    server.lastsave = time(NULL); /* At startup we consider the DB saved. */
+    server.lastbgsave_try = 0;    /* At startup we never tried to BGSAVE. */
+    server.rdb_save_time_last = -1;
+    server.rdb_save_time_start = -1;
+    server.dirty = 0;
     resetServerStats();
     /* A few stats we don't want to reset: server startup time, and peak mem. */
-    tls_instance_state->server.stat_starttime = time(NULL);
-    tls_instance_state->server.stat_peak_memory = 0;
-    tls_instance_state->server.resident_set_size = 0;
-    tls_instance_state->server.lastbgsave_status = REDIS_OK;
-    tls_instance_state->server.aof_last_write_status = REDIS_OK;
-    tls_instance_state->server.aof_last_write_errno = 0;
-    tls_instance_state->server.repl_good_slaves_count = 0;
+    server.stat_starttime = time(NULL);
+    server.stat_peak_memory = 0;
+    server.resident_set_size = 0;
+    server.lastbgsave_status = REDIS_OK;
+    server.aof_last_write_status = REDIS_OK;
+    server.aof_last_write_errno = 0;
+    server.repl_good_slaves_count = 0;
     updateCachedTime();
 
 	
@@ -1805,7 +1805,7 @@ void initServer(void) {
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
 	/*
-    if(aeCreateTimeEvent(tls_instance_state->server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
+    if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         redisPanic("Can't create the serverCron time event.");
         exit(1);
     }
@@ -1814,30 +1814,30 @@ void initServer(void) {
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
 	/*
-    for (j = 0; j < tls_instance_state->server.ipfd_count; j++) {
-        if (aeCreateFileEvent(tls_instance_state->server.el, tls_instance_state->server.ipfd[j], AE_READABLE,
+    for (j = 0; j < server.ipfd_count; j++) {
+        if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)
             {
                 redisPanic(
-                    "Unrecoverable error creating tls_instance_state->server.ipfd file event.");
+                    "Unrecoverable error creating server.ipfd file event.");
             }
     }
 	*/
 	/*
-    if (tls_instance_state->server.sofd > 0 && aeCreateFileEvent(tls_instance_state->server.el,tls_instance_state->server.sofd,AE_READABLE,
-        acceptUnixHandler,NULL) == AE_ERR) redisPanic("Unrecoverable error creating tls_instance_state->server.sofd file event.");
+    if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
+        acceptUnixHandler,NULL) == AE_ERR) redisPanic("Unrecoverable error creating server.sofd file event.");
 	*/
     /* Open the AOF file if needed. */
 	/*
-    if (tls_instance_state->server.aof_state == REDIS_AOF_ON) {
+    if (server.aof_state == REDIS_AOF_ON) {
 #ifdef _WIN32
-        tls_instance_state->server.aof_fd = open(tls_instance_state->server.aof_filename,
+        server.aof_fd = open(server.aof_filename,
                                O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
 #else
-        tls_instance_state->server.aof_fd = open(tls_instance_state->server.aof_filename,
+        server.aof_fd = open(server.aof_filename,
                                O_WRONLY|O_APPEND|O_CREAT,0644);
 #endif
-        if (tls_instance_state->server.aof_fd == -1) {
+        if (server.aof_fd == -1) {
             redisLog(REDIS_WARNING, "Can't open the append-only file: %s",
                 strerror(errno));
             exit(1);
@@ -1849,10 +1849,10 @@ void initServer(void) {
      * no explicit limit in the user provided configuration we set a limit
      * at 3 GB using maxmemory with 'noeviction' policy'. This avoids
      * useless crashes of the Redis instance for out of memory. */
-    if (tls_instance_state->server.arch_bits == 32 && tls_instance_state->server.maxmemory == 0) {
+    if (server.arch_bits == 32 && server.maxmemory == 0) {
         redisLog(REDIS_WARNING,"Warning: 32 bit instance detected but no memory limit set. Setting 3 GB maxmemory limit with 'noeviction' policy now.");
-        tls_instance_state->server.maxmemory = 3072LL*(1024*1024); /* 3 GB */
-        tls_instance_state->server.maxmemory_policy = REDIS_MAXMEMORY_NO_EVICTION;
+        server.maxmemory = 3072LL*(1024*1024); /* 3 GB */
+        server.maxmemory_policy = REDIS_MAXMEMORY_NO_EVICTION;
     }
 
     replicationScriptCacheInit();
@@ -1893,10 +1893,10 @@ void populateCommandTable(void) {
             f++;
         }
 
-        retval1 = dictAdd(tls_instance_state->server.commands, sdsnew(c->name), c);
+        retval1 = dictAdd(server.commands, sdsnew(c->name), c);
         /* Populate an additional dictionary that will be unaffected
          * by rename-command statements in redis.conf. */
-        retval2 = dictAdd(tls_instance_state->server.orig_commands, sdsnew(c->name), c);
+        retval2 = dictAdd(server.orig_commands, sdsnew(c->name), c);
         redisAssert(retval1 == DICT_OK && retval2 == DICT_OK);
     }
 }
@@ -1953,14 +1953,14 @@ void redisOpArrayFree(redisOpArray *oa) {
 /* ====================== Commands lookup and execution ===================== */
 
 struct redisCommand *lookupCommand(sds name) {
-    return dictFetchValue(tls_instance_state->server.commands, name);
+    return dictFetchValue(server.commands, name);
 }
 
 struct redisCommand *lookupCommandByCString(char *s) {
     struct redisCommand *cmd;
     sds name = sdsnew(s);
 
-    cmd = dictFetchValue(tls_instance_state->server.commands, name);
+    cmd = dictFetchValue(server.commands, name);
     sdsfree(name);
     return cmd;
 }
@@ -1973,9 +1973,9 @@ struct redisCommand *lookupCommandByCString(char *s) {
  * rewriteClientCommandVector() in order to set client->cmd pointer
  * correctly even if the command was renamed. */
 struct redisCommand *lookupCommandOrOriginal(sds name) {
-    struct redisCommand *cmd = dictFetchValue(tls_instance_state->server.commands, name);
+    struct redisCommand *cmd = dictFetchValue(server.commands, name);
 
-    if (!cmd) cmd = dictFetchValue(tls_instance_state->server.orig_commands,name);
+    if (!cmd) cmd = dictFetchValue(server.orig_commands,name);
     return cmd;
 }
 
@@ -1990,10 +1990,10 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
 void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
                int flags)
 {
-    if (tls_instance_state->server.aof_state != REDIS_AOF_OFF && flags & REDIS_PROPAGATE_AOF)
+    if (server.aof_state != REDIS_AOF_OFF && flags & REDIS_PROPAGATE_AOF)
         feedAppendOnlyFile(cmd,dbid,argv,argc);
     if (flags & REDIS_PROPAGATE_REPL)
-        replicationFeedSlaves(tls_instance_state->server.slaves,dbid,argv,argc);
+        replicationFeedSlaves(server.slaves,dbid,argv,argc);
 }
 
 /* Used inside commands to schedule the propagation of additional commands
@@ -2001,7 +2001,7 @@ void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
 void alsoPropagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
                    int target)
 {
-    redisOpArrayAppend(&tls_instance_state->server.also_propagate,cmd,dbid,argv,argc,target);
+    redisOpArrayAppend(&server.also_propagate,cmd,dbid,argv,argc,target);
 }
 
 /* It is possible to call the function forceCommandPropagation() inside a
@@ -2019,36 +2019,36 @@ void call(redisClient *c, int flags) {
 
     /* Sent the command to clients in MONITOR mode, only if the commands are
      * not generated from reading an AOF. */
-    if (listLength(tls_instance_state->server.monitors) &&
-        !tls_instance_state->server.loading &&
+    if (listLength(server.monitors) &&
+        !server.loading &&
         !(c->cmd->flags & (REDIS_CMD_SKIP_MONITOR|REDIS_CMD_ADMIN)))
     {
-        replicationFeedMonitors(c,tls_instance_state->server.monitors,c->db->id,c->argv,c->argc);
+        replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
     }
 
     /* Call the command. */
     c->flags &= ~(REDIS_FORCE_AOF|REDIS_FORCE_REPL);
-    redisOpArrayInit(&tls_instance_state->server.also_propagate);
-    dirty = tls_instance_state->server.dirty;
+    redisOpArrayInit(&server.also_propagate);
+    dirty = server.dirty;
     start = ustime();
     c->cmd->proc(c);
     duration = ustime()-start;
-    dirty = tls_instance_state->server.dirty-dirty;
+    dirty = server.dirty-dirty;
     if (dirty < 0) dirty = 0;
 
     /* When EVAL is called loading the AOF we don't want commands called
      * from Lua to go into the slowlog or to populate statistics. */
-    if (tls_instance_state->server.loading && c->flags & REDIS_LUA_CLIENT)
+    if (server.loading && c->flags & REDIS_LUA_CLIENT)
         flags &= ~(REDIS_CALL_SLOWLOG | REDIS_CALL_STATS);
 
     /* If the caller is Lua, we want to force the EVAL caller to propagate
      * the script if the command flag or client flag are forcing the
      * propagation. */
-    if (c->flags & REDIS_LUA_CLIENT && tls_instance_state->server.lua_caller) {
+    if (c->flags & REDIS_LUA_CLIENT && server.lua_caller) {
         if (c->flags & REDIS_FORCE_REPL)
-            tls_instance_state->server.lua_caller->flags |= REDIS_FORCE_REPL;
+            server.lua_caller->flags |= REDIS_FORCE_REPL;
         if (c->flags & REDIS_FORCE_AOF)
-            tls_instance_state->server.lua_caller->flags |= REDIS_FORCE_AOF;
+            server.lua_caller->flags |= REDIS_FORCE_AOF;
     }
 
     /* Log the command into the Slow log if needed, and populate the
@@ -2083,17 +2083,17 @@ void call(redisClient *c, int flags) {
 
     /* Handle the alsoPropagate() API to handle commands that want to propagate
      * multiple separated commands. */
-    if (tls_instance_state->server.also_propagate.numops) {
+    if (server.also_propagate.numops) {
         int j;
         redisOp *rop;
 
-        for (j = 0; j < tls_instance_state->server.also_propagate.numops; j++) {
-            rop = &tls_instance_state->server.also_propagate.ops[j];
+        for (j = 0; j < server.also_propagate.numops; j++) {
+            rop = &server.also_propagate.ops[j];
             propagate(rop->cmd, rop->dbid, rop->argv, rop->argc, rop->target);
         }
-        redisOpArrayFree(&tls_instance_state->server.also_propagate);
+        redisOpArrayFree(&server.also_propagate);
     }
-    tls_instance_state->server.stat_numcommands++;
+    server.stat_numcommands++;
 }
 
 /* If this function gets called we already read a whole
@@ -2133,7 +2133,7 @@ int processCommand(redisClient *c) {
     }
 
     /* Check if the user is authenticated */
-    if (tls_instance_state->server.requirepass && !c->authenticated && c->cmd->proc != authCommand)
+    if (server.requirepass && !c->authenticated && c->cmd->proc != authCommand)
     {
         flagTransaction(c);
         addReply(c,shared.noautherr);
@@ -2145,7 +2145,7 @@ int processCommand(redisClient *c) {
      * First we try to free some memory if possible (if there are volatile
      * keys in the dataset). If there are not the only thing we can do
      * is returning an error. */
-    if (tls_instance_state->server.maxmemory) {
+    if (server.maxmemory) {
         int retval = freeMemoryIfNeeded();
         if ((c->cmd->flags & REDIS_CMD_DENYOOM) && retval == REDIS_ERR) {
             flagTransaction(c);
@@ -2156,32 +2156,32 @@ int processCommand(redisClient *c) {
 
     /* Don't accept write commands if there are problems persisting on disk
      * and if this is a master instance. */
-    if (((tls_instance_state->server.stop_writes_on_bgsave_err &&
-          tls_instance_state->server.saveparamslen > 0 &&
-          tls_instance_state->server.lastbgsave_status == REDIS_ERR) ||
-          tls_instance_state->server.aof_last_write_status == REDIS_ERR) &&
-        tls_instance_state->server.masterhost == NULL &&
+    if (((server.stop_writes_on_bgsave_err &&
+          server.saveparamslen > 0 &&
+          server.lastbgsave_status == REDIS_ERR) ||
+          server.aof_last_write_status == REDIS_ERR) &&
+        server.masterhost == NULL &&
         (c->cmd->flags & REDIS_CMD_WRITE ||
          c->cmd->proc == pingCommand))
     {
         flagTransaction(c);
-        if (tls_instance_state->server.aof_last_write_status == REDIS_OK)
+        if (server.aof_last_write_status == REDIS_OK)
             addReply(c, shared.bgsaveerr);
         else
             addReplySds(c,
                 sdscatprintf(sdsempty(),
                 "-MISCONF Errors writing to the AOF file: %s\r\n",
-                strerror(tls_instance_state->server.aof_last_write_errno)));
+                strerror(server.aof_last_write_errno)));
         return REDIS_OK;
     }
 
     /* Don't accept write commands if there are not enough good slaves and
      * user configured the min-slaves-to-write option. */
-    if (tls_instance_state->server.masterhost == NULL &&
-        tls_instance_state->server.repl_min_slaves_to_write &&
-        tls_instance_state->server.repl_min_slaves_max_lag &&
+    if (server.masterhost == NULL &&
+        server.repl_min_slaves_to_write &&
+        server.repl_min_slaves_max_lag &&
         c->cmd->flags & REDIS_CMD_WRITE &&
-        tls_instance_state->server.repl_good_slaves_count < tls_instance_state->server.repl_min_slaves_to_write)
+        server.repl_good_slaves_count < server.repl_min_slaves_to_write)
     {
         flagTransaction(c);
         addReply(c, shared.noreplicaserr);
@@ -2190,7 +2190,7 @@ int processCommand(redisClient *c) {
 
     /* Don't accept write commands if this is a read only slave. But
      * accept write commands if this is our master. */
-    if (tls_instance_state->server.masterhost && tls_instance_state->server.repl_slave_ro &&
+    if (server.masterhost && server.repl_slave_ro &&
         !(c->flags & REDIS_MASTER) &&
         c->cmd->flags & REDIS_CMD_WRITE)
     {
@@ -2211,8 +2211,8 @@ int processCommand(redisClient *c) {
 
     /* Only allow INFO and SLAVEOF when slave-serve-stale-data is no and
      * we are a slave with a broken link with master. */
-    if (tls_instance_state->server.masterhost && tls_instance_state->server.repl_state != REDIS_REPL_CONNECTED &&
-        tls_instance_state->server.repl_serve_stale_data == 0 &&
+    if (server.masterhost && server.repl_state != REDIS_REPL_CONNECTED &&
+        server.repl_serve_stale_data == 0 &&
         !(c->cmd->flags & REDIS_CMD_STALE))
     {
         flagTransaction(c);
@@ -2222,13 +2222,13 @@ int processCommand(redisClient *c) {
 
     /* Loading DB? Return an error if the command has not the
      * REDIS_CMD_LOADING flag. */
-    if (tls_instance_state->server.loading && !(c->cmd->flags & REDIS_CMD_LOADING)) {
+    if (server.loading && !(c->cmd->flags & REDIS_CMD_LOADING)) {
         addReply(c, shared.loadingerr);
         return REDIS_OK;
     }
 
     /* Lua script too slow? Only allow a limited number of commands. */
-    if (tls_instance_state->server.lua_timedout &&
+    if (server.lua_timedout &&
           c->cmd->proc != authCommand &&
           c->cmd->proc != replconfCommand &&
         !(c->cmd->proc == shutdownCommand &&
@@ -2252,7 +2252,7 @@ int processCommand(redisClient *c) {
         addReply(c,shared.queued);
     } else {
         call(c,REDIS_CALL_FULL);
-        if (listLength(tls_instance_state->server.ready_keys))
+        if (listLength(server.ready_keys))
             handleClientsBlockedOnLists();
     }
     return REDIS_OK;
@@ -2265,11 +2265,11 @@ int processCommand(redisClient *c) {
 void closeListeningSockets(int unlink_unix_socket) {
     int j;
 
-    for (j = 0; j < tls_instance_state->server.ipfd_count; j++) close(tls_instance_state->server.ipfd[j]);
-    if (tls_instance_state->server.sofd != -1) close(tls_instance_state->server.sofd);
-    if (unlink_unix_socket && tls_instance_state->server.unixsocket) {
+    for (j = 0; j < server.ipfd_count; j++) close(server.ipfd[j]);
+    if (server.sofd != -1) close(server.sofd);
+    if (unlink_unix_socket && server.unixsocket) {
         redisLog(REDIS_NOTICE,"Removing the unix socket file.");
-        unlink(tls_instance_state->server.unixsocket); /* don't care if this fails */
+        unlink(server.unixsocket); /* don't care if this fails */
     }
 }
 
@@ -2281,22 +2281,22 @@ int prepareForShutdown(int flags) {
     /* Kill the saving child if there is a background saving in progress.
        We want to avoid race conditions, for instance our saving child may
        overwrite the synchronous saving did by SHUTDOWN. */
-    if (tls_instance_state->server.rdb_child_pid != -1) {
+    if (server.rdb_child_pid != -1) {
         redisLog(REDIS_WARNING,"There is a child saving an .rdb. Killing it!");
 #ifdef _WIN32
         AbortForkOperation();
 #else
-        kill(tls_instance_state->server.rdb_child_pid,SIGUSR1);
+        kill(server.rdb_child_pid,SIGUSR1);
 #endif
-        rdbRemoveTempFile(tls_instance_state->server.rdb_child_pid);
+        rdbRemoveTempFile(server.rdb_child_pid);
     }
-    if (tls_instance_state->server.aof_state != REDIS_AOF_OFF) {
+    if (server.aof_state != REDIS_AOF_OFF) {
         /* Kill the AOF saving child as the AOF we already have may be longer
          * but contains the full dataset anyway. */
-        if (tls_instance_state->server.aof_child_pid != -1) {
+        if (server.aof_child_pid != -1) {
             /* If we have AOF enabled but haven't written the AOF yet, don't
              * shutdown or else the dataset will be lost. */
-            if (tls_instance_state->server.aof_state == REDIS_AOF_WAIT_REWRITE) {
+            if (server.aof_state == REDIS_AOF_WAIT_REWRITE) {
                 redisLog(REDIS_WARNING, "Writing initial AOF, can't exit.");
                 return REDIS_ERR;
             }
@@ -2305,17 +2305,17 @@ int prepareForShutdown(int flags) {
 #ifdef _WIN32
             AbortForkOperation();
 #else
-            kill(tls_instance_state->server.aof_child_pid,SIGUSR1);
+            kill(server.aof_child_pid,SIGUSR1);
 #endif
         }
         /* Append only file: fsync() the AOF and exit */
         redisLog(REDIS_NOTICE,"Calling fsync() on the AOF file.");
-        aof_fsync(tls_instance_state->server.aof_fd);
+        aof_fsync(server.aof_fd);
     }
-    if ((tls_instance_state->server.saveparamslen > 0 && !nosave) || save) {
+    if ((server.saveparamslen > 0 && !nosave) || save) {
         redisLog(REDIS_NOTICE,"Saving the final RDB snapshot before exiting.");
         /* Snapshotting. Perform a SYNC SAVE and exit */
-        if (rdbSave(tls_instance_state->server.rdb_filename) != REDIS_OK) {
+        if (rdbSave(server.rdb_filename) != REDIS_OK) {
             /* Ooops.. error saving! The best we can do is to continue
              * operating. Note that if there was a background saving process,
              * in the next cron() Redis will be notified that the background
@@ -2325,15 +2325,15 @@ int prepareForShutdown(int flags) {
             return REDIS_ERR;
         }
     }
-    if (tls_instance_state->server.daemonize) {
+    if (server.daemonize) {
         redisLog(REDIS_NOTICE,"Removing the pid file.");
-        unlink(tls_instance_state->server.pidfile);
+        unlink(server.pidfile);
     }
     /* Close the listening sockets. Apparently this allows faster restarts. */
 
     closeListeningSockets(1);
     redisLog(REDIS_WARNING,"%s is now ready to exit, bye bye...",
-        tls_instance_state->server.sentinel_mode ? "Sentinel" : "Redis");
+        server.sentinel_mode ? "Sentinel" : "Redis");
     return REDIS_OK;
 }
 
@@ -2382,9 +2382,9 @@ int time_independent_strcmp(char *a, char *b) {
 }
 
 void authCommand(redisClient *c) {
-    if (!tls_instance_state->server.requirepass) {
+    if (!server.requirepass) {
         addReplyError(c,"Client sent AUTH, but no password is set");
-    } else if (!time_independent_strcmp(c->argv[1]->ptr, tls_instance_state->server.requirepass)) {
+    } else if (!time_independent_strcmp(c->argv[1]->ptr, server.requirepass)) {
       c->authenticated = 1;
       addReply(c,shared.ok);
     } else {
@@ -2485,8 +2485,8 @@ void commandCommand(redisClient *c) {
     dictEntry *de;
 
     if (c->argc == 1) {
-        addReplyMultiBulkLen(c, dictSize(tls_instance_state->server.commands));
-        di = dictGetIterator(tls_instance_state->server.commands);
+        addReplyMultiBulkLen(c, dictSize(server.commands));
+        di = dictGetIterator(server.commands);
         while ((de = dictNext(di)) != NULL) {
             addReplyCommand(c, dictGetVal(de));
         }
@@ -2495,10 +2495,10 @@ void commandCommand(redisClient *c) {
         int i;
         addReplyMultiBulkLen(c, c->argc-2);
         for (i = 2; i < c->argc; i++) {
-            addReplyCommand(c, dictFetchValue(tls_instance_state->server.commands, c->argv[i]->ptr));
+            addReplyCommand(c, dictFetchValue(server.commands, c->argv[i]->ptr));
         }
     } else if (!strcasecmp(c->argv[1]->ptr, "count") && c->argc == 2) {
-        addReplyLongLong(c, dictSize(tls_instance_state->server.commands));
+        addReplyLongLong(c, dictSize(server.commands));
     } else {
         addReplyError(c, "Unknown subcommand or wrong number of arguments.");
         return;
@@ -2540,7 +2540,7 @@ void bytesToHuman(char *s, PORT_ULONGLONG n) {
  * on memory corruption problems. */
 sds genRedisInfoString(char *section) {
     sds info = sdsempty();
-    time_t uptime = tls_instance_state->server.unixtime-tls_instance_state->server.stat_starttime;
+    time_t uptime = server.unixtime-server.stat_starttime;
     int j, numcommands;
     struct rusage self_ru, c_ru;
     PORT_ULONG lol,bib;
@@ -2563,7 +2563,7 @@ sds genRedisInfoString(char *section) {
 #endif
         char *mode;
 
-        if (tls_instance_state->server.sentinel_mode) mode = "sentinel";
+        if (server.sentinel_mode) mode = "sentinel";
         else mode = "standalone";
 
         if (sections++) info = sdscat(info,"\r\n");
@@ -2612,7 +2612,7 @@ sds genRedisInfoString(char *section) {
 #else
             "Windows", "", "",
 #endif
-            tls_instance_state->server.arch_bits,
+            server.arch_bits,
             aeGetApiName(),
 #ifndef _WIN32
 #ifdef __GNUC__
@@ -2622,13 +2622,13 @@ sds genRedisInfoString(char *section) {
 #endif
 #endif
             (PORT_LONG) getpid(),
-            tls_instance_state->server.runid,
-            tls_instance_state->server.port,
+            server.runid,
+            server.port,
             (intmax_t)uptime,
             (intmax_t)(uptime/(3600*24)),
-            tls_instance_state->server.hz,
-            (PORT_ULONG) tls_instance_state->server.lruclock,
-            tls_instance_state->server.configfile ? tls_instance_state->server.configfile : "");
+            server.hz,
+            (PORT_ULONG) server.lruclock,
+            server.configfile ? server.configfile : "");
     }
 
     /* Clients */
@@ -2640,9 +2640,9 @@ sds genRedisInfoString(char *section) {
             "client_longest_output_list:%lu\r\n"
             "client_biggest_input_buf:%lu\r\n"
             "blocked_clients:%d\r\n",
-            listLength(tls_instance_state->server.clients)-listLength(tls_instance_state->server.slaves),
+            listLength(server.clients)-listLength(server.slaves),
             lol, bib,
-            tls_instance_state->server.bpop_blocked_clients);
+            server.bpop_blocked_clients);
     }
 
     /* Memory */
@@ -2655,11 +2655,11 @@ sds genRedisInfoString(char *section) {
          * may happen that the instantaneous value is slightly bigger than
          * the peak value. This may confuse users, so we update the peak
          * if found smaller than the current memory usage. */
-        if (zmalloc_used > tls_instance_state->server.stat_peak_memory)
-            tls_instance_state->server.stat_peak_memory = zmalloc_used;
+        if (zmalloc_used > server.stat_peak_memory)
+            server.stat_peak_memory = zmalloc_used;
 
         bytesToHuman(hmem,zmalloc_used);
-        bytesToHuman(peak_hmem,tls_instance_state->server.stat_peak_memory);
+        bytesToHuman(peak_hmem,server.stat_peak_memory);
         if (sections++) info = sdscat(info,"\r\n");
         info = sdscatprintf(info,
             "# Memory\r\n"
@@ -2673,11 +2673,11 @@ sds genRedisInfoString(char *section) {
             "mem_allocator:%s\r\n",
             zmalloc_used,
             hmem,
-            tls_instance_state->server.resident_set_size,
-            tls_instance_state->server.stat_peak_memory,
+            server.resident_set_size,
+            server.stat_peak_memory,
             peak_hmem,
-            ((PORT_LONGLONG)lua_gc(tls_instance_state->server.lua,LUA_GCCOUNT,0))*1024LL,
-            zmalloc_get_fragmentation_ratio(tls_instance_state->server.resident_set_size),
+            ((PORT_LONGLONG)lua_gc(server.lua,LUA_GCCOUNT,0))*1024LL,
+            zmalloc_get_fragmentation_ratio(server.resident_set_size),
             ZMALLOC_LIB
             );
     }
@@ -2702,22 +2702,22 @@ sds genRedisInfoString(char *section) {
             "aof_current_rewrite_time_sec:%lld\r\n"
             "aof_last_bgrewrite_status:%s\r\n"
             "aof_last_write_status:%s\r\n", 
-            tls_instance_state->server.loading,
-            tls_instance_state->server.dirty,
-            tls_instance_state->server.rdb_child_pid != -1,
-            (PORT_LONGLONG)tls_instance_state->server.lastsave,
-            (tls_instance_state->server.lastbgsave_status == REDIS_OK) ? "ok" : "err",
-            (PORT_LONGLONG)tls_instance_state->server.rdb_save_time_last,
-            (tls_instance_state->server.rdb_child_pid == -1) ?
-                (PORT_LONGLONG)-1 : (PORT_LONGLONG)(time(NULL)-tls_instance_state->server.rdb_save_time_start),
-            tls_instance_state->server.aof_state != REDIS_AOF_OFF,
-            tls_instance_state->server.aof_child_pid != -1,
-            tls_instance_state->server.aof_rewrite_scheduled,
-            (PORT_LONGLONG)tls_instance_state->server.aof_rewrite_time_last,
-            (tls_instance_state->server.aof_child_pid == -1) ?
-                (PORT_LONGLONG)-1 : (PORT_LONGLONG)(time(NULL)-tls_instance_state->server.aof_rewrite_time_start),
-            (tls_instance_state->server.aof_lastbgrewrite_status == REDIS_OK) ? "ok" : "err",
-            (tls_instance_state->server.aof_last_write_status == REDIS_OK) ? "ok" : "err");
+            server.loading,
+            server.dirty,
+            server.rdb_child_pid != -1,
+            (PORT_LONGLONG)server.lastsave,
+            (server.lastbgsave_status == REDIS_OK) ? "ok" : "err",
+            (PORT_LONGLONG)server.rdb_save_time_last,
+            (server.rdb_child_pid == -1) ?
+                (PORT_LONGLONG)-1 : (PORT_LONGLONG)(time(NULL)-server.rdb_save_time_start),
+            server.aof_state != REDIS_AOF_OFF,
+            server.aof_child_pid != -1,
+            server.aof_rewrite_scheduled,
+            (PORT_LONGLONG)server.aof_rewrite_time_last,
+            (server.aof_child_pid == -1) ?
+                (PORT_LONGLONG)-1 : (PORT_LONGLONG)(time(NULL)-server.aof_rewrite_time_start),
+            (server.aof_lastbgrewrite_status == REDIS_OK) ? "ok" : "err",
+            (server.aof_last_write_status == REDIS_OK) ? "ok" : "err");
 #else
     /* Persistence */
     if (allsections || defsections || !strcasecmp(section,"persistence")) {
@@ -2738,25 +2738,25 @@ sds genRedisInfoString(char *section) {
             "aof_current_rewrite_time_sec:%jd\r\n"
             "aof_last_bgrewrite_status:%s\r\n"
             "aof_last_write_status:%s\r\n",
-            tls_instance_state->server.loading,
-            tls_instance_state->server.dirty,
-            tls_instance_state->server.rdb_child_pid != -1,
-            (intmax_t)tls_instance_state->server.lastsave,
-            (tls_instance_state->server.lastbgsave_status == REDIS_OK) ? "ok" : "err",
-            (intmax_t)tls_instance_state->server.rdb_save_time_last,
-            (intmax_t)((tls_instance_state->server.rdb_child_pid == -1) ?
-                -1 : time(NULL)-tls_instance_state->server.rdb_save_time_start),
-            tls_instance_state->server.aof_state != REDIS_AOF_OFF,
-            tls_instance_state->server.aof_child_pid != -1,
-            tls_instance_state->server.aof_rewrite_scheduled,
-            (intmax_t)tls_instance_state->server.aof_rewrite_time_last,
-            (intmax_t)((tls_instance_state->server.aof_child_pid == -1) ?
-                -1 : time(NULL)-tls_instance_state->server.aof_rewrite_time_start),
-            (tls_instance_state->server.aof_lastbgrewrite_status == REDIS_OK) ? "ok" : "err",
-            (tls_instance_state->server.aof_last_write_status == REDIS_OK) ? "ok" : "err");
+            server.loading,
+            server.dirty,
+            server.rdb_child_pid != -1,
+            (intmax_t)server.lastsave,
+            (server.lastbgsave_status == REDIS_OK) ? "ok" : "err",
+            (intmax_t)server.rdb_save_time_last,
+            (intmax_t)((server.rdb_child_pid == -1) ?
+                -1 : time(NULL)-server.rdb_save_time_start),
+            server.aof_state != REDIS_AOF_OFF,
+            server.aof_child_pid != -1,
+            server.aof_rewrite_scheduled,
+            (intmax_t)server.aof_rewrite_time_last,
+            (intmax_t)((server.aof_child_pid == -1) ?
+                -1 : time(NULL)-server.aof_rewrite_time_start),
+            (server.aof_lastbgrewrite_status == REDIS_OK) ? "ok" : "err",
+            (server.aof_last_write_status == REDIS_OK) ? "ok" : "err");
 #endif
 
-        if (tls_instance_state->server.aof_state != REDIS_AOF_OFF) {
+        if (server.aof_state != REDIS_AOF_OFF) {
             info = sdscatprintf(info,
                 "aof_current_size:%lld\r\n"
                 "aof_base_size:%lld\r\n"
@@ -2765,30 +2765,30 @@ sds genRedisInfoString(char *section) {
                 "aof_rewrite_buffer_length:%lu\r\n"
                 "aof_pending_bio_fsync:%llu\r\n"
                 "aof_delayed_fsync:%lu\r\n",
-                (PORT_LONGLONG) tls_instance_state->server.aof_current_size,
-                (PORT_LONGLONG) tls_instance_state->server.aof_rewrite_base_size,
-                tls_instance_state->server.aof_rewrite_scheduled,
-                sdslen(tls_instance_state->server.aof_buf),
+                (PORT_LONGLONG) server.aof_current_size,
+                (PORT_LONGLONG) server.aof_rewrite_base_size,
+                server.aof_rewrite_scheduled,
+                sdslen(server.aof_buf),
                 aofRewriteBufferSize(),
                 bioPendingJobsOfType(REDIS_BIO_AOF_FSYNC),
-                tls_instance_state->server.aof_delayed_fsync);
+                server.aof_delayed_fsync);
         }
 
-        if (tls_instance_state->server.loading) {
+        if (server.loading) {
             double perc;
             time_t eta, elapsed;
-            off_t remaining_bytes = tls_instance_state->server.loading_total_bytes-
-                                    tls_instance_state->server.loading_loaded_bytes;
+            off_t remaining_bytes = server.loading_total_bytes-
+                                    server.loading_loaded_bytes;
 
-            perc = ((double)tls_instance_state->server.loading_loaded_bytes /
-                   (tls_instance_state->server.loading_total_bytes+1)) * 100;
+            perc = ((double)server.loading_loaded_bytes /
+                   (server.loading_total_bytes+1)) * 100;
 
-            elapsed = time(NULL)-tls_instance_state->server.loading_start_time;
+            elapsed = time(NULL)-server.loading_start_time;
             if (elapsed == 0) {
                 eta = 1; /* A fake 1 second figure if we don't have
                             enough info */
             } else {
-                eta = (elapsed*remaining_bytes)/(tls_instance_state->server.loading_loaded_bytes+1);
+                eta = (elapsed*remaining_bytes)/(server.loading_loaded_bytes+1);
             }
 
             info = sdscatprintf(info,
@@ -2797,9 +2797,9 @@ sds genRedisInfoString(char *section) {
                 "loading_loaded_bytes:%llu\r\n"
                 "loading_loaded_perc:%.2f\r\n"
                 "loading_eta_seconds:%jd\r\n",
-                (intmax_t) tls_instance_state->server.loading_start_time,
-                (PORT_ULONGLONG) tls_instance_state->server.loading_total_bytes,
-                (PORT_ULONGLONG) tls_instance_state->server.loading_loaded_bytes,
+                (intmax_t) server.loading_start_time,
+                (PORT_ULONGLONG) server.loading_total_bytes,
+                (PORT_ULONGLONG) server.loading_loaded_bytes,
                 perc,
                 (intmax_t)eta
             );
@@ -2829,24 +2829,24 @@ sds genRedisInfoString(char *section) {
             "pubsub_channels:%ld\r\n"
             "pubsub_patterns:%lu\r\n"
             "latest_fork_usec:%lld\r\n",
-            tls_instance_state->server.stat_numconnections,
-            tls_instance_state->server.stat_numcommands,
+            server.stat_numconnections,
+            server.stat_numcommands,
             getInstantaneousMetric(REDIS_METRIC_COMMAND),
-            tls_instance_state->server.stat_net_input_bytes,
-            tls_instance_state->server.stat_net_output_bytes,
+            server.stat_net_input_bytes,
+            server.stat_net_output_bytes,
             (float)getInstantaneousMetric(REDIS_METRIC_NET_INPUT)/1024,
             (float)getInstantaneousMetric(REDIS_METRIC_NET_OUTPUT)/1024,
-            tls_instance_state->server.stat_rejected_conn,
-            tls_instance_state->server.stat_sync_full,
-            tls_instance_state->server.stat_sync_partial_ok,
-            tls_instance_state->server.stat_sync_partial_err,
-            tls_instance_state->server.stat_expiredkeys,
-            tls_instance_state->server.stat_evictedkeys,
-            tls_instance_state->server.stat_keyspace_hits,
-            tls_instance_state->server.stat_keyspace_misses,
-            dictSize(tls_instance_state->server.pubsub_channels),
-            listLength(tls_instance_state->server.pubsub_patterns),
-            tls_instance_state->server.stat_fork_time);
+            server.stat_rejected_conn,
+            server.stat_sync_full,
+            server.stat_sync_partial_ok,
+            server.stat_sync_partial_err,
+            server.stat_expiredkeys,
+            server.stat_evictedkeys,
+            server.stat_keyspace_hits,
+            server.stat_keyspace_misses,
+            dictSize(server.pubsub_channels),
+            listLength(server.pubsub_patterns),
+            server.stat_fork_time);
     }
 
     /* Replication */
@@ -2855,14 +2855,14 @@ sds genRedisInfoString(char *section) {
         info = sdscatprintf(info,
             "# Replication\r\n"
             "role:%s\r\n",
-            tls_instance_state->server.masterhost == NULL ? "master" : "slave");
-        if (tls_instance_state->server.masterhost) {
+            server.masterhost == NULL ? "master" : "slave");
+        if (server.masterhost) {
             PORT_LONGLONG slave_repl_offset = 1;
 
-            if (tls_instance_state->server.master)
-                slave_repl_offset = tls_instance_state->server.master->reploff;
-            else if (tls_instance_state->server.cached_master)
-                slave_repl_offset = tls_instance_state->server.cached_master->reploff;
+            if (server.master)
+                slave_repl_offset = server.master->reploff;
+            else if (server.cached_master)
+                slave_repl_offset = server.cached_master->reploff;
 
             info = sdscatprintf(info,
                 "master_host:%s\r\n"
@@ -2871,57 +2871,57 @@ sds genRedisInfoString(char *section) {
                 "master_last_io_seconds_ago:%d\r\n"
                 "master_sync_in_progress:%d\r\n"
                 "slave_repl_offset:%lld\r\n"
-                ,tls_instance_state->server.masterhost,
-                tls_instance_state->server.masterport,
-                (tls_instance_state->server.repl_state == REDIS_REPL_CONNECTED) ?
+                ,server.masterhost,
+                server.masterport,
+                (server.repl_state == REDIS_REPL_CONNECTED) ?
                     "up" : "down",
-                tls_instance_state->server.master ?
-                ((int)(tls_instance_state->server.unixtime-tls_instance_state->server.master->lastinteraction)) : -1,
-                tls_instance_state->server.repl_state == REDIS_REPL_TRANSFER,
+                server.master ?
+                ((int)(server.unixtime-server.master->lastinteraction)) : -1,
+                server.repl_state == REDIS_REPL_TRANSFER,
                 slave_repl_offset
             );
 
-            if (tls_instance_state->server.repl_state == REDIS_REPL_TRANSFER) {
+            if (server.repl_state == REDIS_REPL_TRANSFER) {
                 info = sdscatprintf(info,
                     "master_sync_left_bytes:%lld\r\n"
                     "master_sync_last_io_seconds_ago:%d\r\n"
                     , (PORT_LONGLONG)
-                        (tls_instance_state->server.repl_transfer_size - tls_instance_state->server.repl_transfer_read),
-                    (int)(tls_instance_state->server.unixtime-tls_instance_state->server.repl_transfer_lastio)
+                        (server.repl_transfer_size - server.repl_transfer_read),
+                    (int)(server.unixtime-server.repl_transfer_lastio)
                 );
             }
 
-            if (tls_instance_state->server.repl_state != REDIS_REPL_CONNECTED) {
+            if (server.repl_state != REDIS_REPL_CONNECTED) {
                 info = sdscatprintf(info,
                     "master_link_down_since_seconds:%jd\r\n",
-                    (intmax_t)tls_instance_state->server.unixtime-tls_instance_state->server.repl_down_since);
+                    (intmax_t)server.unixtime-server.repl_down_since);
             }
             info = sdscatprintf(info,
                 "slave_priority:%d\r\n"
                 "slave_read_only:%d\r\n",
-                tls_instance_state->server.slave_priority,
-                tls_instance_state->server.repl_slave_ro);
+                server.slave_priority,
+                server.repl_slave_ro);
         }
 
         info = sdscatprintf(info,
             "connected_slaves:%lu\r\n",
-            listLength(tls_instance_state->server.slaves));
+            listLength(server.slaves));
 
         /* If min-slaves-to-write is active, write the number of slaves
          * currently considered 'good'. */
-        if (tls_instance_state->server.repl_min_slaves_to_write &&
-            tls_instance_state->server.repl_min_slaves_max_lag) {
+        if (server.repl_min_slaves_to_write &&
+            server.repl_min_slaves_max_lag) {
             info = sdscatprintf(info,
                 "min_slaves_good_slaves:%d\r\n",
-                tls_instance_state->server.repl_good_slaves_count);
+                server.repl_good_slaves_count);
         }
 
-        if (listLength(tls_instance_state->server.slaves)) {
+        if (listLength(server.slaves)) {
             int slaveid = 0;
             listNode *ln;
             listIter li;
 
-            listRewind(tls_instance_state->server.slaves,&li);
+            listRewind(server.slaves,&li);
             while((ln = listNext(&li))) {
                 redisClient *slave = listNodeValue(ln);
                 char *state = NULL;
@@ -2960,11 +2960,11 @@ sds genRedisInfoString(char *section) {
             "repl_backlog_size:%lld\r\n"
             "repl_backlog_first_byte_offset:%lld\r\n"
             "repl_backlog_histlen:%lld\r\n",
-            tls_instance_state->server.master_repl_offset,
-            tls_instance_state->server.repl_backlog != NULL,
-            tls_instance_state->server.repl_backlog_size,
-            tls_instance_state->server.repl_backlog_off,
-            tls_instance_state->server.repl_backlog_histlen);
+            server.master_repl_offset,
+            server.repl_backlog != NULL,
+            server.repl_backlog_size,
+            server.repl_backlog_off,
+            server.repl_backlog_histlen);
     }
 
     /* CPU */
@@ -3002,15 +3002,15 @@ sds genRedisInfoString(char *section) {
     if (allsections || defsections || !strcasecmp(section,"keyspace")) {
         if (sections++) info = sdscat(info,"\r\n");
         info = sdscatprintf(info, "# Keyspace\r\n");
-        for (j = 0; j < tls_instance_state->server.dbnum; j++) {
+        for (j = 0; j < server.dbnum; j++) {
             PORT_LONGLONG keys, vkeys;
 
-            keys = dictSize(tls_instance_state->server.db[j].dict);
-            vkeys = dictSize(tls_instance_state->server.db[j].expires);
+            keys = dictSize(server.db[j].dict);
+            vkeys = dictSize(server.db[j].expires);
             if (keys || vkeys) {
                 info = sdscatprintf(info,
                     "db%d:keys=%lld,expires=%lld,avg_ttl=%lld\r\n",
-                    j, keys, vkeys, tls_instance_state->server.db[j].avg_ttl);
+                    j, keys, vkeys, server.db[j].avg_ttl);
             }
         }
     }
@@ -3037,7 +3037,7 @@ void monitorCommand(redisClient *c) {
     if (c->flags & REDIS_SLAVE) return;
 
     c->flags |= (REDIS_SLAVE|REDIS_MONITOR);
-    listAddNodeTail(tls_instance_state->server.monitors,c);
+    listAddNodeTail(server.monitors,c);
     addReply(c,shared.ok);
 }
 
@@ -3056,11 +3056,11 @@ void monitorCommand(redisClient *c) {
  * If all the bytes needed to return back under the limit were freed the
  * function returns REDIS_OK, otherwise REDIS_ERR is returned, and the caller
  * should block the execution of commands that will result in more memory
- * used by the tls_instance_state->server.
+ * used by the server.
  */
 int freeMemoryIfNeeded(void) {
     size_t mem_used, mem_tofree, mem_freed;
-    int slaves = (int)listLength(tls_instance_state->server.slaves);                                /* UPSTREAM_ISSUE: missing (int) cast */
+    int slaves = (int)listLength(server.slaves);                                /* UPSTREAM_ISSUE: missing (int) cast */
     mstime_t latency;
 
     /* Remove the size of slaves output buffers and AOF buffer from the
@@ -3070,7 +3070,7 @@ int freeMemoryIfNeeded(void) {
         listIter li;
         listNode *ln;
 
-        listRewind(tls_instance_state->server.slaves,&li);
+        listRewind(server.slaves,&li);
         while((ln = listNext(&li))) {
             redisClient *slave = listNodeValue(ln);
             PORT_ULONG obuf_bytes = getClientOutputBufferMemoryUsage(slave);
@@ -3080,53 +3080,53 @@ int freeMemoryIfNeeded(void) {
                 mem_used -= obuf_bytes;
         }
     }
-    if (tls_instance_state->server.aof_state != REDIS_AOF_OFF) {
-        mem_used -= sdslen(tls_instance_state->server.aof_buf);
+    if (server.aof_state != REDIS_AOF_OFF) {
+        mem_used -= sdslen(server.aof_buf);
         mem_used -= aofRewriteBufferSize();
     }
 
     /* Check if we are over the memory limit. */
-    if (mem_used <= tls_instance_state->server.maxmemory) return REDIS_OK;
+    if (mem_used <= server.maxmemory) return REDIS_OK;
 
-    if (tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_NO_EVICTION)
+    if (server.maxmemory_policy == REDIS_MAXMEMORY_NO_EVICTION)
         return REDIS_ERR; /* We need to free memory, but policy forbids. */
 
     /* Compute how much memory we need to free. */
-    mem_tofree = mem_used - (size_t)tls_instance_state->server.maxmemory;
+    mem_tofree = mem_used - (size_t)server.maxmemory;
     mem_freed = 0;
     latencyStartMonitor(latency);
     while (mem_freed < mem_tofree) {
         int j, k, keys_freed = 0;
 
-        for (j = 0; j < tls_instance_state->server.dbnum; j++) {
+        for (j = 0; j < server.dbnum; j++) {
             PORT_LONG bestval = 0; /* just to prevent warning */
             sds bestkey = NULL;
             struct dictEntry *de;
-            redisDb *db = tls_instance_state->server.db+j;
+            redisDb *db = server.db+j;
             dict *dict;
 
-            if (tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
-                tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM)
+            if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
+                server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM)
             {
-                dict = tls_instance_state->server.db[j].dict;
+                dict = server.db[j].dict;
             } else {
-                dict = tls_instance_state->server.db[j].expires;
+                dict = server.db[j].expires;
             }
             if (dictSize(dict) == 0) continue;
 
             /* volatile-random and allkeys-random policy */
-            if (tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM ||
-                tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_RANDOM)
+            if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_RANDOM ||
+                server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_RANDOM)
             {
                 de = dictGetRandomKey(dict);
                 bestkey = dictGetKey(de);
             }
 
             /* volatile-lru and allkeys-lru policy */
-            else if (tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
-                tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
+            else if (server.maxmemory_policy == REDIS_MAXMEMORY_ALLKEYS_LRU ||
+                server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
             {
-                for (k = 0; k < tls_instance_state->server.maxmemory_samples; k++) {
+                for (k = 0; k < server.maxmemory_samples; k++) {
                     sds thiskey;
                     PORT_LONG thisval;
                     robj *o;
@@ -3135,7 +3135,7 @@ int freeMemoryIfNeeded(void) {
                     thiskey = dictGetKey(de);
                     /* When policy is volatile-lru we need an additional lookup
                      * to locate the real key, as dict is set to db->expires. */
-                    if (tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
+                    if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_LRU)
                         de = dictFind(db->dict, thiskey);
                     o = dictGetVal(de);
                     thisval = estimateObjectIdleTime(o);
@@ -3149,8 +3149,8 @@ int freeMemoryIfNeeded(void) {
             }
 
             /* volatile-ttl */
-            else if (tls_instance_state->server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_TTL) {
-                for (k = 0; k < tls_instance_state->server.maxmemory_samples; k++) {
+            else if (server.maxmemory_policy == REDIS_MAXMEMORY_VOLATILE_TTL) {
+                for (k = 0; k < server.maxmemory_samples; k++) {
                     sds thiskey;
                     PORT_LONG thisval;
 
@@ -3185,7 +3185,7 @@ int freeMemoryIfNeeded(void) {
                 dbDelete(db,keyobj);
                 delta -= (PORT_LONGLONG) zmalloc_used_memory();
                 mem_freed += (size_t)delta;
-                tls_instance_state->server.stat_evictedkeys++;
+                server.stat_evictedkeys++;
                 notifyKeyspaceEvent(REDIS_NOTIFY_EVICTED, "evicted",
                     keyobj, db->id);
                 decrRefCount(keyobj);
@@ -3238,7 +3238,7 @@ void linuxMemoryWarnings(void) {
 
 void createPidFile(void) {
     /* Try to write the pid file in a best-effort way. */
-    FILE *fp = fopen(tls_instance_state->server.pidfile,"w");
+    FILE *fp = fopen(server.pidfile,"w");
     if (fp) {
         fprintf(fp,"%d\n",(int)getpid());
         fclose(fp);
@@ -3299,16 +3299,16 @@ void redisAsciiArt(void) {
     char *buf = zmalloc(1024*16);
     char *mode = "stand alone";
 
-    if (tls_instance_state->server.sentinel_mode) mode = "sentinel";
+    if (server.sentinel_mode) mode = "sentinel";
 
-    if (tls_instance_state->server.syslog_enabled) {
+    if (server.syslog_enabled) {
         redisLog(REDIS_NOTICE,
             "Redis %s (%s/%d) %s bit, %s mode, port %d, pid %ld ready to start.",   /* BUGBUG: fix %ld */
             REDIS_VERSION,
             redisGitSHA1(),
             strtol(redisGitDirty(),NULL,10) > 0,
             (sizeof(void *) == 8) ? "64" : "32",
-            mode, tls_instance_state->server.port,
+            mode, server.port,
             (PORT_LONG) getpid()
         );
     } else {
@@ -3317,7 +3317,7 @@ void redisAsciiArt(void) {
             redisGitSHA1(),
             strtol(redisGitDirty(),NULL,10) > 0,
             (sizeof(void *) == 8) ? "64" : "32",
-            mode, tls_instance_state->server.port,
+            mode, server.port,
             (PORT_LONG) getpid()
         );
         redisLogRaw(REDIS_NOTICE|REDIS_LOG_RAW,buf);
@@ -3343,16 +3343,16 @@ static void sigShutdownHandler(int sig) {
      * If we receive the signal the second time, we interpret this as
      * the user really wanting to quit ASAP without waiting to persist
      * on disk. */
-    if (tls_instance_state->server.shutdown_asap && sig == SIGINT) {
+    if (server.shutdown_asap && sig == SIGINT) {
         redisLogFromHandler(REDIS_WARNING, "You insist... exiting now.");
         rdbRemoveTempFile(getpid());
         exit(1); /* Exit with an error since this was not a clean shutdown. */
-    } else if (tls_instance_state->server.loading) {
+    } else if (server.loading) {
         exit(0);
     }
 
     redisLogFromHandler(REDIS_WARNING, msg);
-    tls_instance_state->server.shutdown_asap = 1;
+    server.shutdown_asap = 1;
 }
 
 void setupSignalHandlers(void) {
@@ -3394,11 +3394,11 @@ int checkForSentinelMode(int argc, char **argv) {
 /* Function called at startup to load RDB or AOF file in memory. */
 void loadDataFromDisk(void) {
     PORT_LONGLONG start = ustime();
-    if (tls_instance_state->server.aof_state == REDIS_AOF_ON) {
-        if (loadAppendOnlyFile(tls_instance_state->server.aof_filename) == REDIS_OK)
+    if (server.aof_state == REDIS_AOF_ON) {
+        if (loadAppendOnlyFile(server.aof_filename) == REDIS_OK)
             redisLog(REDIS_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
     } else {
-        if (rdbLoad(tls_instance_state->server.rdb_filename) == REDIS_OK) {
+        if (rdbLoad(server.rdb_filename) == REDIS_OK) {
             redisLog(REDIS_NOTICE,"DB loaded from disk: %.3f seconds",
                 (float)(ustime()-start)/1000000);
         } else if (errno != ENOENT) {
@@ -3426,8 +3426,8 @@ void redisSetProcTitle(char *title) {
 #ifdef USE_SETPROCTITLE
     setproctitle("%s %s:%d",
         title,
-        tls_instance_state->server.bindaddr_count ? tls_instance_state->server.bindaddr[0] : "*",
-        tls_instance_state->server.port);
+        server.bindaddr_count ? server.bindaddr[0] : "*",
+        server.port);
 #else
     REDIS_NOTUSED(title);
 #endif
@@ -3446,13 +3446,13 @@ int main(int argc, char **argv) {
     srand((unsigned int)time(NULL) ^ getpid());
     gettimeofday(&tv,NULL);
     dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
-    tls_instance_state->server.sentinel_mode = checkForSentinelMode(argc,argv);
+    server.sentinel_mode = checkForSentinelMode(argc,argv);
     initServerConfig();
 
     /* We need to init sentinel right now as parsing the configuration file
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
-    if (tls_instance_state->server.sentinel_mode) {
+    if (server.sentinel_mode) {
         initSentinelConfig();
         initSentinel();
     }
@@ -3498,27 +3498,27 @@ int main(int argc, char **argv) {
             }
             j++;
         }
-        if (tls_instance_state->server.sentinel_mode && configfile && *configfile == '-') {
+        if (server.sentinel_mode && configfile && *configfile == '-') {
             redisLog(REDIS_WARNING,
                 "Sentinel config from STDIN not allowed.");
             redisLog(REDIS_WARNING,
                 "Sentinel needs config file on disk to save state.  Exiting...");
             exit(1);
         }
-        if (configfile) tls_instance_state->server.configfile = getAbsolutePath(configfile);
+        if (configfile) server.configfile = getAbsolutePath(configfile);
         resetServerSaveParams();
         loadServerConfig(configfile,options);
         sdsfree(options);
     } else {
-        redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], tls_instance_state->server.sentinel_mode ? "sentinel" : "redis");
+        redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], server.sentinel_mode ? "sentinel" : "redis");
     }
-    if (tls_instance_state->server.daemonize) daemonize();
+    if (server.daemonize) daemonize();
     initServer();
-    if (tls_instance_state->server.daemonize) createPidFile();
+    if (server.daemonize) createPidFile();
     redisSetProcTitle(argv[0]);
     redisAsciiArt();
 
-    if (!tls_instance_state->server.sentinel_mode) {
+    if (!server.sentinel_mode) {
         /* Things not needed when running in Sentinel mode. */
         redisLog(REDIS_WARNING,"Server started, Redis version " REDIS_VERSION);
     #ifdef __linux__
@@ -3526,22 +3526,22 @@ int main(int argc, char **argv) {
     #endif
         checkTcpBacklogSettings();
         loadDataFromDisk();
-        if (tls_instance_state->server.ipfd_count > 0)
-            redisLog(REDIS_NOTICE,"The server is now ready to accept connections on port %d", tls_instance_state->server.port);
-        if (tls_instance_state->server.sofd > 0)
-            redisLog(REDIS_NOTICE,"The server is now ready to accept connections at %s", tls_instance_state->server.unixsocket);
+        if (server.ipfd_count > 0)
+            redisLog(REDIS_NOTICE,"The server is now ready to accept connections on port %d", server.port);
+        if (server.sofd > 0)
+            redisLog(REDIS_NOTICE,"The server is now ready to accept connections at %s", server.unixsocket);
     } else {
         sentinelIsRunning();
     }
 
     /* Warning the user about suspicious maxmemory setting. */
-    if (tls_instance_state->server.maxmemory > 0 && tls_instance_state->server.maxmemory < 1024*1024) {
-        redisLog(REDIS_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", tls_instance_state->server.maxmemory);
+    if (server.maxmemory > 0 && server.maxmemory < 1024*1024) {
+        redisLog(REDIS_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
 
-    aeSetBeforeSleepProc(tls_instance_state->server.el,beforeSleep);
-    aeMain(tls_instance_state->server.el);
-    aeDeleteEventLoop(tls_instance_state->server.el);
+    aeSetBeforeSleepProc(server.el,beforeSleep);
+    aeMain(server.el);
+    aeDeleteEventLoop(server.el);
     return 0;
 }
 
@@ -3574,13 +3574,13 @@ void *libredis_new_instance(const char* load_filename, int argc, char **argv)
 	srand((unsigned int)time(NULL) ^ getpid());
 	gettimeofday(&tv, NULL);
 	dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
-	tls_instance_state->server.sentinel_mode = checkForSentinelMode(argc, argv);
+	server.sentinel_mode = checkForSentinelMode(argc, argv);
 	initServerConfig();
 
 	/* We need to init sentinel right now as parsing the configuration file
 	* in sentinel mode will have the effect of populating the sentinel
 	* data structures with master nodes to monitor. */
-	if (tls_instance_state->server.sentinel_mode) {
+	if (server.sentinel_mode) {
 		initSentinelConfig();
 		initSentinel();
 	}
@@ -3628,39 +3628,39 @@ void *libredis_new_instance(const char* load_filename, int argc, char **argv)
 			}
 			j++;
 		}
-		if (tls_instance_state->server.sentinel_mode && configfile && *configfile == '-') {
+		if (server.sentinel_mode && configfile && *configfile == '-') {
 			redisLog(REDIS_WARNING,
 				"Sentinel config from STDIN not allowed.");
 			redisLog(REDIS_WARNING,
 				"Sentinel needs config file on disk to save state.  Exiting...");
 			exit(1);
 		}
-		if (configfile) tls_instance_state->server.configfile = getAbsolutePath(configfile);
+		if (configfile) server.configfile = getAbsolutePath(configfile);
 
 		resetServerSaveParams();
 		loadServerConfig(configfile, options);
 		sdsfree(options);
 	}
 	else {
-		redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], tls_instance_state->server.sentinel_mode ? "sentinel" : "redis");
+		redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], server.sentinel_mode ? "sentinel" : "redis");
 	}
 
 
 
-	if (tls_instance_state->server.daemonize) daemonize();
+	if (server.daemonize) daemonize();
 	
 	initServer();
 	
-	if (tls_instance_state->server.daemonize) createPidFile();
+	if (server.daemonize) createPidFile();
 	//redisSetProcTitle(argv[0]);
 	//redisAsciiArt();
 
 	
-	assert(!tls_instance_state->server.sentinel_mode);
+	assert(!server.sentinel_mode);
 
 	
 
-	if (!tls_instance_state->server.sentinel_mode) {
+	if (!server.sentinel_mode) {
 		/* Things not needed when running in Sentinel mode. */
 		redisLog(REDIS_WARNING, "Server started, Redis version " REDIS_VERSION);
 #ifdef __linux__
@@ -3678,10 +3678,10 @@ void *libredis_new_instance(const char* load_filename, int argc, char **argv)
 		
 
 
-		if (tls_instance_state->server.ipfd_count > 0)
-			redisLog(REDIS_NOTICE, "The server is now ready to accept connections on port %d", tls_instance_state->server.port);
-		if (tls_instance_state->server.sofd > 0)
-			redisLog(REDIS_NOTICE, "The server is now ready to accept connections at %s", tls_instance_state->server.unixsocket);
+		if (server.ipfd_count > 0)
+			redisLog(REDIS_NOTICE, "The server is now ready to accept connections on port %d", server.port);
+		if (server.sofd > 0)
+			redisLog(REDIS_NOTICE, "The server is now ready to accept connections at %s", server.unixsocket);
 	}
 	else {
 		sentinelIsRunning();
@@ -3689,16 +3689,13 @@ void *libredis_new_instance(const char* load_filename, int argc, char **argv)
 
 	
 	/* Warning the user about suspicious maxmemory setting. */
-	if (tls_instance_state->server.maxmemory > 0 && tls_instance_state->server.maxmemory < 1024 * 1024) {
-		redisLog(REDIS_WARNING, "WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", tls_instance_state->server.maxmemory);
+	if (server.maxmemory > 0 && server.maxmemory < 1024 * 1024) {
+		redisLog(REDIS_WARNING, "WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
 	}
 
-	//aeSetBeforeSleepProc(tls_instance_state->server.el, beforeSleep);
-	//aeMain(tls_instance_state->server.el);
-	//aeDeleteEventLoop(tls_instance_state->server.el);
-
-	//create client
-	tls_instance_state->pclient = createClient(-1);
+	//aeSetBeforeSleepProc(server.el, beforeSleep);
+	//aeMain(server.el);
+	//aeDeleteEventLoop(server.el);
 
 
 	//
@@ -3713,7 +3710,7 @@ void libredis_set_instance(void*pinst)
 
 reply_t libredis_call(const char *cmdbuf, int len)
 {
-	redisClient *c = tls_instance_state->server.lua_client;
+	redisClient *c = server.lua_client;
 	sdsclear(c->querybuf);
 	c->querybuf = sdscatlen(c->querybuf, (void*)cmdbuf, len);
 	//printf("querybuf: %s\n", c->querybuf);

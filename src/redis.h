@@ -168,7 +168,7 @@ typedef PORT_LONGLONG mstime_t; /* millisecond time type. */
 #define REDIS_LONGSTR_SIZE      21          /* Bytes needed for long -> str */
 #define REDIS_AOF_AUTOSYNC_BYTES (1024*1024*32) /* fdatasync every 32MB */
 /* When configuring the Redis eventloop, we setup it so that the total number
- * of file descriptors we can handle are tls_instance_state->server.maxclients + RESERVED_FDS + FDSET_INCR
+ * of file descriptors we can handle are server.maxclients + RESERVED_FDS + FDSET_INCR
  * that is our safety margin. */
 #define REDIS_EVENTLOOP_FDSET_INCR (REDIS_MIN_RESERVED_FDS+96)
 
@@ -252,7 +252,7 @@ typedef PORT_LONGLONG mstime_t; /* millisecond time type. */
 #define REDIS_DIRTY_CAS (1<<5) /* Watched keys modified. EXEC will fail. */
 #define REDIS_CLOSE_AFTER_REPLY (1<<6) /* Close after writing entire reply. */
 #define REDIS_UNBLOCKED (1<<7) /* This client was unblocked and is stored in
-                                  tls_instance_state->server.unblocked_clients */
+                                  server.unblocked_clients */
 #define REDIS_LUA_CLIENT (1<<8) /* This is a non connected client used by Lua */
 #define REDIS_ASKING (1<<9)     /* Client issued the ASKING command */
 #define REDIS_CLOSE_ASAP (1<<10)/* Close this client ASAP */
@@ -400,12 +400,12 @@ typedef PORT_LONGLONG mstime_t; /* millisecond time type. */
 #define REDIS_NOTIFY_ALL (REDIS_NOTIFY_GENERIC | REDIS_NOTIFY_STRING | REDIS_NOTIFY_LIST | REDIS_NOTIFY_SET | REDIS_NOTIFY_HASH | REDIS_NOTIFY_ZSET | REDIS_NOTIFY_EXPIRED | REDIS_NOTIFY_EVICTED)      /* A */
 
 /* Get the first bind addr or NULL */
-#define REDIS_BIND_ADDR (tls_instance_state->server.bindaddr_count ? tls_instance_state->server.bindaddr[0] : NULL)
+#define REDIS_BIND_ADDR (server.bindaddr_count ? server.bindaddr[0] : NULL)
 
 /* Using the following macro you can run code inside serverCron() with the
  * specified period, specified in milliseconds.
- * The actual resolution depends on tls_instance_state->server.hz. */
-#define run_with_period(_ms_) if ((_ms_ <= 1000/tls_instance_state->server.hz) || !(tls_instance_state->server.cronloops%((_ms_)/(1000/tls_instance_state->server.hz))))
+ * The actual resolution depends on server.hz. */
+#define run_with_period(_ms_) if ((_ms_ <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
 
 /* We can print the stacktrace, so our assert is defined this way: */
 #define redisAssertWithInfo(_c,_o,_e) ((_e)?(void)0 : (_redisAssertWithInfo(_c,_o,#_e,__FILE__,__LINE__),_exit(1)))
@@ -425,7 +425,7 @@ typedef PORT_LONGLONG mstime_t; /* millisecond time type. */
 typedef struct redisObject {
     unsigned type:4;
     unsigned encoding:4;
-    unsigned lru:REDIS_LRU_BITS; /* lru time (relative to tls_instance_state->server.lruclock) */
+    unsigned lru:REDIS_LRU_BITS; /* lru time (relative to server.lruclock) */
     int refcount;
     void *ptr;
 } robj;
@@ -474,17 +474,17 @@ typedef struct blockingState {
                              * for BRPOPLPUSH. */
 } blockingState;
 
-/* The following structure represents a node in the tls_instance_state->server.ready_keys list,
+/* The following structure represents a node in the server.ready_keys list,
  * where we accumulate all the keys that had clients blocked with a blocking
  * operation such as B[LR]POP, but received new data in the context of the
  * last executed command.
  *
  * After the execution of every command or script, we run this list to check
  * if as a result we should serve data to clients blocked, unblocking them.
- * Note that tls_instance_state->server.ready_keys will not have duplicates as there dictionary
+ * Note that server.ready_keys will not have duplicates as there dictionary
  * also called ready_keys in every structure representing a Redis database,
  * where we make sure to remember if a given key was already added in the
- * tls_instance_state->server.ready_keys list. */
+ * server.ready_keys list. */
 typedef struct readyList {
     redisDb *db;
     robj *key;
@@ -646,7 +646,7 @@ struct redisServer {
     int port;                   /* TCP listening port */
     int tcp_backlog;            /* TCP listen() backlog */
     char *bindaddr[REDIS_BINDADDR_MAX]; /* Addresses we should bind to */
-    int bindaddr_count;         /* Number of addresses in tls_instance_state->server.bindaddr[] */
+    int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
     char *unixsocket;           /* UNIX socket path */
     mode_t unixsocketperm;      /* UNIX socket permission */
     int ipfd[REDIS_BINDADDR_MAX]; /* TCP socket file descriptors */
@@ -769,7 +769,7 @@ struct redisServer {
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
                                        gets released. */
     time_t repl_no_slaves_since;    /* We have no slaves since that time.
-                                       Only valid if tls_instance_state->server.slaves len is 0. */
+                                       Only valid if server.slaves len is 0. */
     int repl_min_slaves_to_write;   /* Min number of slaves to write. */
     int repl_min_slaves_max_lag;    /* Max lag of <count> slaves to write. */
     int repl_good_slaves_count;     /* Number of slaves with lag <= max_lag. */
@@ -946,10 +946,11 @@ typedef struct {
 typedef struct
 {
 	struct redisServer server;
-	struct redisClient* pclient;
 } instance_state_t;
 
 extern __declspec(thread) instance_state_t *tls_instance_state;
+
+#define server tls_instance_state->server
 
 
 extern struct sharedObjectsStruct shared;

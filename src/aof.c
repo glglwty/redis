@@ -69,32 +69,32 @@ typedef struct aofrwblock {
 } aofrwblock;
 
 /* This function free the old AOF rewrite buffer if needed, and initialize
- * a fresh new one. It tests for tls_instance_state->server.aof_rewrite_buf_blocks equal to NULL
+ * a fresh new one. It tests for server.aof_rewrite_buf_blocks equal to NULL
  * so can be used for the first initialization as well. */
 void aofRewriteBufferReset(void) {
-    if (tls_instance_state->server.aof_rewrite_buf_blocks)
-        listRelease(tls_instance_state->server.aof_rewrite_buf_blocks);
+    if (server.aof_rewrite_buf_blocks)
+        listRelease(server.aof_rewrite_buf_blocks);
 
-    tls_instance_state->server.aof_rewrite_buf_blocks = listCreate();
-    listSetFreeMethod(tls_instance_state->server.aof_rewrite_buf_blocks,zfree);
+    server.aof_rewrite_buf_blocks = listCreate();
+    listSetFreeMethod(server.aof_rewrite_buf_blocks,zfree);
 }
 
 /* Return the current size of the AOF rewrite buffer. */
 PORT_ULONG aofRewriteBufferSize(void) {
     PORT_ULONG size;
-    listNode *ln = listLast(tls_instance_state->server.aof_rewrite_buf_blocks);
+    listNode *ln = listLast(server.aof_rewrite_buf_blocks);
     aofrwblock *block = ln ? ln->value : NULL;
 
     if (block == NULL) return 0;
     size =
-        (listLength(tls_instance_state->server.aof_rewrite_buf_blocks)-1) * AOF_RW_BUF_BLOCK_SIZE;
+        (listLength(server.aof_rewrite_buf_blocks)-1) * AOF_RW_BUF_BLOCK_SIZE;
     size += block->used;
     return size;
 }
 
 /* Append data to the AOF rewrite buffer, allocating new blocks if needed. */
 void aofRewriteBufferAppend(unsigned char *s, PORT_ULONG len) {
-    listNode *ln = listLast(tls_instance_state->server.aof_rewrite_buf_blocks);
+    listNode *ln = listLast(server.aof_rewrite_buf_blocks);
     aofrwblock *block = ln ? ln->value : NULL;
 
     while(len) {
@@ -117,11 +117,11 @@ void aofRewriteBufferAppend(unsigned char *s, PORT_ULONG len) {
             block = zmalloc(sizeof(*block));
             block->free = AOF_RW_BUF_BLOCK_SIZE;
             block->used = 0;
-            listAddNodeTail(tls_instance_state->server.aof_rewrite_buf_blocks,block);
+            listAddNodeTail(server.aof_rewrite_buf_blocks,block);
 
             /* Log every time we cross more 10 or 100 blocks, respectively
              * as a notice or warning. */
-            numblocks = (int)listLength(tls_instance_state->server.aof_rewrite_buf_blocks);         /* UPSTREAM_ISSUE: missing (int) cast */
+            numblocks = (int)listLength(server.aof_rewrite_buf_blocks);         /* UPSTREAM_ISSUE: missing (int) cast */
             if (((numblocks+1) % 10) == 0) {
                 int level = ((numblocks+1) % 100) == 0 ? REDIS_WARNING :
                                                          REDIS_NOTICE;
@@ -140,7 +140,7 @@ ssize_t aofRewriteBufferWrite(int fd) {
     listIter li;
     ssize_t count = 0;
 
-    listRewind(tls_instance_state->server.aof_rewrite_buf_blocks,&li);
+    listRewind(server.aof_rewrite_buf_blocks,&li);
     while((ln = listNext(&li))) {
         aofrwblock *block = listNodeValue(ln);
         ssize_t nwritten;
@@ -170,58 +170,58 @@ void aof_background_fsync(int fd) {
 /* Called when the user switches from "appendonly yes" to "appendonly no"
  * at runtime using the CONFIG command. */
 void stopAppendOnly(void) {
-    redisAssert(tls_instance_state->server.aof_state != REDIS_AOF_OFF);
+    redisAssert(server.aof_state != REDIS_AOF_OFF);
     flushAppendOnlyFile(1);
-    aof_fsync(tls_instance_state->server.aof_fd);
-    close(tls_instance_state->server.aof_fd);
+    aof_fsync(server.aof_fd);
+    close(server.aof_fd);
 
-    tls_instance_state->server.aof_fd = -1;
-    tls_instance_state->server.aof_selected_db = -1;
-    tls_instance_state->server.aof_state = REDIS_AOF_OFF;
+    server.aof_fd = -1;
+    server.aof_selected_db = -1;
+    server.aof_state = REDIS_AOF_OFF;
     /* rewrite operation in progress? kill it, wait child exit */
-    if (tls_instance_state->server.aof_child_pid != -1) {
+    if (server.aof_child_pid != -1) {
         redisLog(REDIS_NOTICE, "Killing running AOF rewrite child: %Id",        WIN_PORT_FIX /* %ld -> %Id */
-            (PORT_LONG) tls_instance_state->server.aof_child_pid);
+            (PORT_LONG) server.aof_child_pid);
 #ifdef _WIN32
         AbortForkOperation();
 #else
         {
             int statloc;
-            if (kill(tls_instance_state->server.aof_child_pid,SIGUSR1) != -1)
+            if (kill(server.aof_child_pid,SIGUSR1) != -1)
                 wait3(&statloc,0,NULL);
         }
 #endif
         /* reset the buffer accumulating changes while the child saves */
         aofRewriteBufferReset();
-        aofRemoveTempFile(tls_instance_state->server.aof_child_pid);
-        tls_instance_state->server.aof_child_pid = -1;
-        tls_instance_state->server.aof_rewrite_time_start = -1;
+        aofRemoveTempFile(server.aof_child_pid);
+        server.aof_child_pid = -1;
+        server.aof_rewrite_time_start = -1;
     }
 }
 
 /* Called when the user switches from "appendonly no" to "appendonly yes"
  * at runtime using the CONFIG command. */
 int startAppendOnly(void) {
-    tls_instance_state->server.aof_last_fsync = tls_instance_state->server.unixtime;
+    server.aof_last_fsync = server.unixtime;
 #ifdef _WIN32
-    tls_instance_state->server.aof_fd = open(tls_instance_state->server.aof_filename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
+    server.aof_fd = open(server.aof_filename,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
 #else
-    tls_instance_state->server.aof_fd = open(tls_instance_state->server.aof_filename,O_WRONLY|O_APPEND|O_CREAT,0644);
+    server.aof_fd = open(server.aof_filename,O_WRONLY|O_APPEND|O_CREAT,0644);
 #endif
-    redisAssert(tls_instance_state->server.aof_state == REDIS_AOF_OFF);
-    if (tls_instance_state->server.aof_fd == -1) {
+    redisAssert(server.aof_state == REDIS_AOF_OFF);
+    if (server.aof_fd == -1) {
         redisLog(REDIS_WARNING,"Redis needs to enable the AOF but can't open the append only file: %s",strerror(errno));
         return REDIS_ERR;
     }
     if (rewriteAppendOnlyFileBackground() == REDIS_ERR) {
-        close(tls_instance_state->server.aof_fd);
-        tls_instance_state->server.aof_fd = -1;
+        close(server.aof_fd);
+        server.aof_fd = -1;
         redisLog(REDIS_WARNING,"Redis needs to enable the AOF but can't trigger a background AOF rewrite operation. Check the above logs for more info about the error.");
         return REDIS_ERR;
     }
     /* We correctly switched on AOF, now wait for the rewrite to be complete
      * in order to append data on disk. */
-    tls_instance_state->server.aof_state = REDIS_AOF_WAIT_REWRITE;
+    server.aof_state = REDIS_AOF_WAIT_REWRITE;
     return REDIS_OK;
 }
 
@@ -249,35 +249,35 @@ void flushAppendOnlyFile(int force) {
     int sync_in_progress = 0;
     mstime_t latency;
 
-    if (sdslen(tls_instance_state->server.aof_buf) == 0) return;
+    if (sdslen(server.aof_buf) == 0) return;
 
-    if (tls_instance_state->server.aof_fsync == AOF_FSYNC_EVERYSEC)
+    if (server.aof_fsync == AOF_FSYNC_EVERYSEC)
         sync_in_progress = bioPendingJobsOfType(REDIS_BIO_AOF_FSYNC) != 0;
 
-    if (tls_instance_state->server.aof_fsync == AOF_FSYNC_EVERYSEC && !force) {
+    if (server.aof_fsync == AOF_FSYNC_EVERYSEC && !force) {
         /* With this append fsync policy we do background fsyncing.
          * If the fsync is still in progress we can try to delay
          * the write for a couple of seconds. */
         if (sync_in_progress) {
-            if (tls_instance_state->server.aof_flush_postponed_start == 0) {
+            if (server.aof_flush_postponed_start == 0) {
                 /* No previous write postponing, remember that we are
                  * postponing the flush and return. */
-                tls_instance_state->server.aof_flush_postponed_start = tls_instance_state->server.unixtime;
+                server.aof_flush_postponed_start = server.unixtime;
                 return;
-            } else if (tls_instance_state->server.unixtime - tls_instance_state->server.aof_flush_postponed_start < 2) {
+            } else if (server.unixtime - server.aof_flush_postponed_start < 2) {
                 /* We were already waiting for fsync to finish, but for less
                  * than two seconds this is still ok. Postpone again. */
                 return;
             }
             /* Otherwise fall trough, and go write since we can't wait
              * over two seconds. */
-            tls_instance_state->server.aof_delayed_fsync++;
+            server.aof_delayed_fsync++;
             redisLog(REDIS_NOTICE,"Asynchronous AOF fsync is taking too long (disk is busy?). Writing the AOF buffer without waiting for fsync to complete, this may slow down Redis.");
         }
     }
     /* If you are following this code path, then we are going to write so
      * set reset the postponed flush sentinel to zero. */
-    tls_instance_state->server.aof_flush_postponed_start = 0;
+    server.aof_flush_postponed_start = 0;
 
     /* We want to perform a single write. This should be guaranteed atomic
      * at least if the filesystem we are writing is a real physical one.
@@ -286,7 +286,7 @@ void flushAppendOnlyFile(int force) {
      * or alike */
 
     latencyStartMonitor(latency);
-    nwritten = write(tls_instance_state->server.aof_fd,tls_instance_state->server.aof_buf,sdslen(tls_instance_state->server.aof_buf));
+    nwritten = write(server.aof_fd,server.aof_buf,sdslen(server.aof_buf));
     latencyEndMonitor(latency);
     /* We want to capture different events for delayed writes:
      * when the delay happens with a pending fsync, or with a saving child
@@ -295,7 +295,7 @@ void flushAppendOnlyFile(int force) {
      * useful for graphing / monitoring purposes. */
     if (sync_in_progress) {
         latencyAddSampleIfNeeded("aof-write-pending-fsync",latency);
-    } else if (tls_instance_state->server.aof_child_pid != -1 || tls_instance_state->server.rdb_child_pid != -1) {
+    } else if (server.aof_child_pid != -1 || server.rdb_child_pid != -1) {
         latencyAddSampleIfNeeded("aof-write-active-child",latency);
     } else {
         latencyAddSampleIfNeeded("aof-write-alone",latency);
@@ -303,16 +303,16 @@ void flushAppendOnlyFile(int force) {
     latencyAddSampleIfNeeded("aof-write",latency);
 
     /* We performed the write so reset the postponed flush sentinel to zero. */
-    tls_instance_state->server.aof_flush_postponed_start = 0;
+    server.aof_flush_postponed_start = 0;
 
-    if (nwritten != (signed)sdslen(tls_instance_state->server.aof_buf)) {
+    if (nwritten != (signed)sdslen(server.aof_buf)) {
         static time_t last_write_error_log = 0;
         int can_log = 0;
 
         /* Limit logging rate to 1 line per AOF_WRITE_LOG_ERROR_RATE seconds. */
-        if ((tls_instance_state->server.unixtime - last_write_error_log) > AOF_WRITE_LOG_ERROR_RATE) {
+        if ((server.unixtime - last_write_error_log) > AOF_WRITE_LOG_ERROR_RATE) {
             can_log = 1;
-            last_write_error_log = tls_instance_state->server.unixtime;
+            last_write_error_log = server.unixtime;
         }
 
         /* Log the AOF write error and record the error code. */
@@ -320,7 +320,7 @@ void flushAppendOnlyFile(int force) {
             if (can_log) {
                 redisLog(REDIS_WARNING,"Error writing to the AOF file: %s",
                     strerror(errno));
-                tls_instance_state->server.aof_last_write_errno = errno;
+                server.aof_last_write_errno = errno;
             }
         } else {
             if (can_log) {
@@ -328,10 +328,10 @@ void flushAppendOnlyFile(int force) {
                                        "the AOF file: (nwritten=%lld, "
                                        "expected=%lld)",
                                        (PORT_LONGLONG)nwritten,
-                                       (PORT_LONGLONG)sdslen(tls_instance_state->server.aof_buf));
+                                       (PORT_LONGLONG)sdslen(server.aof_buf));
             }
 
-            if (ftruncate(tls_instance_state->server.aof_fd, tls_instance_state->server.aof_current_size) == -1) {
+            if (ftruncate(server.aof_fd, server.aof_current_size) == -1) {
                 if (can_log) {
                     redisLog(REDIS_WARNING, "Could not remove short write "
                              "from the append-only file.  Redis may refuse "
@@ -343,11 +343,11 @@ void flushAppendOnlyFile(int force) {
                  * -1 since there is no longer partial data into the AOF. */
                 nwritten = -1;
             }
-            tls_instance_state->server.aof_last_write_errno = ENOSPC;
+            server.aof_last_write_errno = ENOSPC;
         }
 
         /* Handle the AOF write error. */
-        if (tls_instance_state->server.aof_fsync == AOF_FSYNC_ALWAYS) {
+        if (server.aof_fsync == AOF_FSYNC_ALWAYS) {
             /* We can't recover when the fsync policy is ALWAYS since the
              * reply for the client is already in the output buffers, and we
              * have the contract with the user that on acknowledged write data
@@ -358,55 +358,55 @@ void flushAppendOnlyFile(int force) {
             /* Recover from failed write leaving data into the buffer. However
              * set an error to stop accepting writes as long as the error
              * condition is not cleared. */
-            tls_instance_state->server.aof_last_write_status = REDIS_ERR;
+            server.aof_last_write_status = REDIS_ERR;
 
             /* Trim the sds buffer if there was a partial write, and there
              * was no way to undo it with ftruncate(2). */
             if (nwritten > 0) {
-                tls_instance_state->server.aof_current_size += nwritten;
-                sdsrange(tls_instance_state->server.aof_buf,(int)nwritten,-1);                      /* UPSTREAM_ISSUE: missing (int) cast */
+                server.aof_current_size += nwritten;
+                sdsrange(server.aof_buf,(int)nwritten,-1);                      /* UPSTREAM_ISSUE: missing (int) cast */
             }
             return; /* We'll try again on the next call... */
         }
     } else {
         /* Successful write(2). If AOF was in error state, restore the
          * OK state and log the event. */
-        if (tls_instance_state->server.aof_last_write_status == REDIS_ERR) {
+        if (server.aof_last_write_status == REDIS_ERR) {
             redisLog(REDIS_WARNING,
                 "AOF write error looks solved, Redis can write again.");
-            tls_instance_state->server.aof_last_write_status = REDIS_OK;
+            server.aof_last_write_status = REDIS_OK;
         }
     }
-    tls_instance_state->server.aof_current_size += nwritten;
+    server.aof_current_size += nwritten;
 
     /* Re-use AOF buffer when it is small enough. The maximum comes from the
      * arena size of 4k minus some overhead (but is otherwise arbitrary). */
-    if ((sdslen(tls_instance_state->server.aof_buf)+sdsavail(tls_instance_state->server.aof_buf)) < 4000) {
-        sdsclear(tls_instance_state->server.aof_buf);
+    if ((sdslen(server.aof_buf)+sdsavail(server.aof_buf)) < 4000) {
+        sdsclear(server.aof_buf);
     } else {
-        sdsfree(tls_instance_state->server.aof_buf);
-        tls_instance_state->server.aof_buf = sdsempty();
+        sdsfree(server.aof_buf);
+        server.aof_buf = sdsempty();
     }
 
     /* Don't fsync if no-appendfsync-on-rewrite is set to yes and there are
      * children doing I/O in the background. */
-    if (tls_instance_state->server.aof_no_fsync_on_rewrite &&
-        (tls_instance_state->server.aof_child_pid != -1 || tls_instance_state->server.rdb_child_pid != -1))
+    if (server.aof_no_fsync_on_rewrite &&
+        (server.aof_child_pid != -1 || server.rdb_child_pid != -1))
             return;
 
     /* Perform the fsync if needed. */
-    if (tls_instance_state->server.aof_fsync == AOF_FSYNC_ALWAYS) {
+    if (server.aof_fsync == AOF_FSYNC_ALWAYS) {
         /* aof_fsync is defined as fdatasync() for Linux in order to avoid
          * flushing metadata. */
         latencyStartMonitor(latency);
-        aof_fsync(tls_instance_state->server.aof_fd); /* Let's try to get this data on the disk */
+        aof_fsync(server.aof_fd); /* Let's try to get this data on the disk */
         latencyEndMonitor(latency);
         latencyAddSampleIfNeeded("aof-fsync-always",latency);
-        tls_instance_state->server.aof_last_fsync = tls_instance_state->server.unixtime;
-    } else if ((tls_instance_state->server.aof_fsync == AOF_FSYNC_EVERYSEC &&
-                tls_instance_state->server.unixtime > tls_instance_state->server.aof_last_fsync)) {
-        if (!sync_in_progress) aof_background_fsync(tls_instance_state->server.aof_fd);
-        tls_instance_state->server.aof_last_fsync = tls_instance_state->server.unixtime;
+        server.aof_last_fsync = server.unixtime;
+    } else if ((server.aof_fsync == AOF_FSYNC_EVERYSEC &&
+                server.unixtime > server.aof_last_fsync)) {
+        if (!sync_in_progress) aof_background_fsync(server.aof_fd);
+        server.aof_last_fsync = server.unixtime;
     }
 }
 
@@ -478,13 +478,13 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
 
     /* The DB this command was targeting is not the same as the last command
      * we appended. To issue a SELECT command is needed. */
-    if (dictid != tls_instance_state->server.aof_selected_db) {
+    if (dictid != server.aof_selected_db) {
         char seldb[64];
 
         snprintf(seldb,sizeof(seldb),"%d",dictid);
         buf = sdscatprintf(buf,"*2\r\n$6\r\nSELECT\r\n$%lu\r\n%s\r\n",
             (PORT_ULONG)strlen(seldb),seldb);
-        tls_instance_state->server.aof_selected_db = dictid;
+        server.aof_selected_db = dictid;
     }
 
     if (cmd->proc == expireCommand || cmd->proc == pexpireCommand ||
@@ -509,14 +509,14 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
     /* Append to the AOF buffer. This will be flushed on disk just before
      * of re-entering the event loop, so before the client will get a
      * positive reply about the operation performed. */
-    if (tls_instance_state->server.aof_state == REDIS_AOF_ON)
-        tls_instance_state->server.aof_buf = sdscatlen(tls_instance_state->server.aof_buf,buf,sdslen(buf));
+    if (server.aof_state == REDIS_AOF_ON)
+        server.aof_buf = sdscatlen(server.aof_buf,buf,sdslen(buf));
 
     /* If a background append only file rewriting is in progress we want to
      * accumulate the differences between the child DB and the current one
      * in a buffer, so that when the child process will do its work we
      * can append the differences to the new append only file. */
-    if (tls_instance_state->server.aof_child_pid != -1)
+    if (server.aof_child_pid != -1)
         aofRewriteBufferAppend((unsigned char*)buf,(PORT_ULONG)sdslen(buf));
 
     sdsfree(buf);
@@ -578,12 +578,12 @@ int loadAppendOnlyFile(char *filename) {
     FILE *fp = fopen(filename,IF_WIN32("rb","r"));
 
     struct redis_stat sb;
-    int old_aof_state = tls_instance_state->server.aof_state;
+    int old_aof_state = server.aof_state;
     PORT_LONG loops = 0;
     off_t valid_up_to = 0; /* Offset of the latest well-formed command loaded. */
 
     if (fp && redis_fstat(fileno(fp),&sb) != -1 && sb.st_size == 0) {
-        tls_instance_state->server.aof_current_size = 0;
+        server.aof_current_size = 0;
         fclose(fp);
         return REDIS_ERR;
     }
@@ -595,7 +595,7 @@ int loadAppendOnlyFile(char *filename) {
 
     /* Temporarily disable AOF, to prevent EXEC from feeding a MULTI
      * to the same file we're about to read. */
-    tls_instance_state->server.aof_state = REDIS_AOF_OFF;
+    server.aof_state = REDIS_AOF_OFF;
 
     fakeClient = createFakeClient();
     startLoading(fp);
@@ -670,7 +670,7 @@ int loadAppendOnlyFile(char *filename) {
         /* Clean up. Command code may have changed argv/argc so we use the
          * argv/argc of the client instead of the local variables. */
         freeFakeClientArgv(fakeClient);
-        if (tls_instance_state->server.aof_load_truncated) valid_up_to = ftello(fp);
+        if (server.aof_load_truncated) valid_up_to = ftello(fp);
     }
 
     /* This point can only be reached when EOF is reached without errors.
@@ -680,10 +680,10 @@ int loadAppendOnlyFile(char *filename) {
 loaded_ok: /* DB loaded, cleanup and return REDIS_OK to the caller. */
     fclose(fp);
     freeFakeClient(fakeClient);
-    tls_instance_state->server.aof_state = old_aof_state;
+    server.aof_state = old_aof_state;
     stopLoading();
     aofUpdateCurrentSize();
-    tls_instance_state->server.aof_rewrite_base_size = tls_instance_state->server.aof_current_size;
+    server.aof_rewrite_base_size = server.aof_current_size;
     return REDIS_OK;
 
 readerr: /* Read error. If feof(fp) is true, fall through to unexpected EOF. */
@@ -693,7 +693,7 @@ readerr: /* Read error. If feof(fp) is true, fall through to unexpected EOF. */
     }
 
 uxeof: /* Unexpected AOF end of file. */
-    if (tls_instance_state->server.aof_load_truncated) {
+    if (server.aof_load_truncated) {
         redisLog(REDIS_WARNING,"!!! Warning: short read while loading the AOF file !!!");
         redisLog(REDIS_WARNING,"!!! Truncating the AOF at offset %llu !!!",
             (PORT_ULONGLONG) valid_up_to);
@@ -707,7 +707,7 @@ uxeof: /* Unexpected AOF end of file. */
         } else {
             /* Make sure the AOF file descriptor points to the end of the
              * file after the truncate call. */
-            if (tls_instance_state->server.aof_fd != -1 && lseek(tls_instance_state->server.aof_fd,0,SEEK_END) == -1) {
+            if (server.aof_fd != -1 && lseek(server.aof_fd,0,SEEK_END) == -1) {
                 redisLog(REDIS_WARNING,"Can't seek the end of the AOF file: %s",
                     strerror(errno));
             } else {
@@ -717,7 +717,7 @@ uxeof: /* Unexpected AOF end of file. */
             }
         }
     }
-    redisLog(REDIS_WARNING,"Unexpected end of file reading the append only file. You can: 1) Make a backup of your AOF file, then use ./redis-check-aof --fix <filename>. 2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the tls_instance_state->server.");
+    redisLog(REDIS_WARNING,"Unexpected end of file reading the append only file. You can: 1) Make a backup of your AOF file, then use ./redis-check-aof --fix <filename>. 2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.");
     exit(1);
 
 fmterr: /* Format error. */
@@ -1000,11 +1000,11 @@ int rewriteAppendOnlyFile(char *filename) {
     }
 
     rioInitWithFile(&aof,fp);
-    if (tls_instance_state->server.aof_rewrite_incremental_fsync)
+    if (server.aof_rewrite_incremental_fsync)
         rioSetAutoSync(&aof,REDIS_AOF_AUTOSYNC_BYTES);
-    for (j = 0; j < tls_instance_state->server.dbnum; j++) {
+    for (j = 0; j < server.dbnum; j++) {
         char selectcmd[] = "*2\r\n$6\r\nSELECT\r\n";
-        redisDb *db = tls_instance_state->server.db+j;
+        redisDb *db = server.db+j;
         dict *d;
 
         d = db->dict;
@@ -1093,10 +1093,10 @@ werr:
  * 1) The user calls BGREWRITEAOF
  * 2) Redis calls this function, that forks():
  *    2a) the child rewrite the append only file in a temp file.
- *    2b) the parent accumulates differences in tls_instance_state->server.aof_rewrite_buf.
+ *    2b) the parent accumulates differences in server.aof_rewrite_buf.
  * 3) When the child finished '2a' exists.
  * 4) The parent will trap the exit code, if it's OK, will append the
- *    data accumulated into tls_instance_state->server.aof_rewrite_buf into the temp file, and
+ *    data accumulated into server.aof_rewrite_buf into the temp file, and
  *    finally will rename(2) the temp file in the actual file name.
  *    The the new file is reopened as the new append only file. Profit!
  */
@@ -1104,7 +1104,7 @@ int rewriteAppendOnlyFileBackground(void) {
     pid_t childpid;
     PORT_LONGLONG start;
 
-    if (tls_instance_state->server.aof_child_pid != -1) return REDIS_ERR;
+    if (server.aof_child_pid != -1) return REDIS_ERR;
     start = ustime();
 
 #ifndef _WIN32
@@ -1119,7 +1119,7 @@ int rewriteAppendOnlyFileBackground(void) {
 #endif
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) getpid());
 #ifdef _WIN32
-		childpid = BeginForkOperation_Aof(tmpfile, &tls_instance_state->server, sizeof(tls_instance_state->server), dictGetHashFunctionSeed(), tls_instance_state->server.logfile);
+		childpid = BeginForkOperation_Aof(tmpfile, &server, sizeof(server), dictGetHashFunctionSeed(), server.logfile);
 #else
         if (rewriteAppendOnlyFile(tmpfile) == REDIS_OK) {
             size_t private_dirty = zmalloc_get_private_dirty();
@@ -1136,9 +1136,9 @@ int rewriteAppendOnlyFileBackground(void) {
     } else {
 #endif
         /* Parent */
-        tls_instance_state->server.stat_fork_time = ustime()-start;
-        tls_instance_state->server.stat_fork_rate = (double) zmalloc_used_memory() * 1000000 / tls_instance_state->server.stat_fork_time / (1024*1024*1024); /* GB per second. */
-        latencyAddSampleIfNeeded("fork",tls_instance_state->server.stat_fork_time/1000);
+        server.stat_fork_time = ustime()-start;
+        server.stat_fork_rate = (double) zmalloc_used_memory() * 1000000 / server.stat_fork_time / (1024*1024*1024); /* GB per second. */
+        latencyAddSampleIfNeeded("fork",server.stat_fork_time/1000);
         if (childpid == -1) {
             redisLog(REDIS_WARNING,
                 "Can't rewrite append only file in background: fork: %s",
@@ -1147,15 +1147,15 @@ int rewriteAppendOnlyFileBackground(void) {
         }
         redisLog(REDIS_NOTICE,
             "Background append only file rewriting started by pid %d",childpid);
-        tls_instance_state->server.aof_rewrite_scheduled = 0;
-        tls_instance_state->server.aof_rewrite_time_start = time(NULL);
-        tls_instance_state->server.aof_child_pid = childpid;
+        server.aof_rewrite_scheduled = 0;
+        server.aof_rewrite_time_start = time(NULL);
+        server.aof_child_pid = childpid;
         updateDictResizePolicy();
         /* We set appendseldb to -1 in order to force the next call to the
          * feedAppendOnlyFile() to issue a SELECT command, so the differences
-         * accumulated by the parent into tls_instance_state->server.aof_rewrite_buf will start
+         * accumulated by the parent into server.aof_rewrite_buf will start
          * with a SELECT statement and it will be safe to merge. */
-        tls_instance_state->server.aof_selected_db = -1;
+        server.aof_selected_db = -1;
         replicationScriptCacheFlush();
         return REDIS_OK;
 #ifndef _WIN32
@@ -1165,10 +1165,10 @@ int rewriteAppendOnlyFileBackground(void) {
 }
 
 void bgrewriteaofCommand(redisClient *c) {
-    if (tls_instance_state->server.aof_child_pid != -1) {
+    if (server.aof_child_pid != -1) {
         addReplyError(c,"Background append only file rewriting already in progress");
-    } else if (tls_instance_state->server.rdb_child_pid != -1) {
-        tls_instance_state->server.aof_rewrite_scheduled = 1;
+    } else if (server.rdb_child_pid != -1) {
+        server.aof_rewrite_scheduled = 1;
         addReplyStatus(c,"Background append only file rewriting scheduled");
     } else if (rewriteAppendOnlyFileBackground() == REDIS_OK) {
         addReplyStatus(c,"Background append only file rewriting started");
@@ -1184,7 +1184,7 @@ void aofRemoveTempFile(pid_t childpid) {
     unlink(tmpfile);
 }
 
-/* Update the tls_instance_state->server.aof_current_size field explicitly using stat(2)
+/* Update the server.aof_current_size field explicitly using stat(2)
  * to check the size of the file. This is useful after a rewrite or after
  * a restart, normally the size is updated just adding the write length
  * to the current length, that is much faster. */
@@ -1193,18 +1193,18 @@ void aofUpdateCurrentSize(void) {
     mstime_t latency;
 
 #ifdef _WIN32
-    if (tls_instance_state->server.aof_fd == -1) {
+    if (server.aof_fd == -1) {
         redisLog(REDIS_NOTICE,"Unable to check the AOF length: %s", "appendfd is -1");
         return;
     }
 #endif
 
     latencyStartMonitor(latency);
-    if (redis_fstat(tls_instance_state->server.aof_fd,&sb) == -1) {
+    if (redis_fstat(server.aof_fd,&sb) == -1) {
         redisLog(REDIS_WARNING,"Unable to obtain the AOF file length. stat: %s",
             strerror(errno));
     } else {
-        tls_instance_state->server.aof_current_size = sb.st_size;
+        server.aof_current_size = sb.st_size;
     }
     latencyEndMonitor(latency);
     latencyAddSampleIfNeeded("aof-fstat",latency);
@@ -1235,7 +1235,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
         newfd = open(tmpfile,O_WRONLY|O_APPEND|O_CREAT|_O_BINARY,_S_IREAD|_S_IWRITE);
 #else
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof",
-            (int)tls_instance_state->server.aof_child_pid);
+            (int)server.aof_child_pid);
         newfd = open(tmpfile,O_WRONLY|O_APPEND);
 #endif
         if (newfd == -1) {
@@ -1265,14 +1265,14 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
          *
          * 1) AOF is DISABLED and this was a one time rewrite. The temporary
          * file will be renamed to the configured file. When this file already
-         * exists, it will be unlinked, which may block the tls_instance_state->server.
+         * exists, it will be unlinked, which may block the server.
          *
          * 2) AOF is ENABLED and the rewritten AOF will immediately start
          * receiving writes. After the temporary file is renamed to the
          * configured file, the original AOF file descriptor will be closed.
          * Since this will be the last reference to that file, closing it
          * causes the underlying file to be unlinked, which may block the
-         * tls_instance_state->server.
+         * server.
          *
          * To mitigate the blocking effect of the unlink operation (either
          * caused by rename(2) in scenario 1, or by close(2) in scenario 2), we
@@ -1288,22 +1288,22 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 
         /* Close files before renaming */
         close(newfd);
-        if (tls_instance_state->server.aof_fd != -1) close(tls_instance_state->server.aof_fd);
+        if (server.aof_fd != -1) close(server.aof_fd);
         /* now rename the existing file to allow new file to be renamed */
         snprintf(tmpfile_old,256,"temp-rewriteaof-old-%d.aof",
-            (int)tls_instance_state->server.aof_child_pid);
-        if (tls_instance_state->server.aof_fd != -1) {
-            if (rename(tls_instance_state->server.aof_filename, tmpfile_old) == -1) {
+            (int)server.aof_child_pid);
+        if (server.aof_fd != -1) {
+            if (rename(server.aof_filename, tmpfile_old) == -1) {
                 redisLog(REDIS_WARNING,
                     "Error trying to rename the existing AOF to old tempfile: %s", strerror(errno));
             }
         }
         latencyStartMonitor(latency);
-        if (rename(tmpfile,tls_instance_state->server.aof_filename) == -1) {
+        if (rename(tmpfile,server.aof_filename) == -1) {
             redisLog(REDIS_WARNING,
                 "Error trying to rename the temporary AOF: %s", strerror(errno));
-            if (tls_instance_state->server.aof_fd != -1) {
-                if (rename(tmpfile_old, tls_instance_state->server.aof_filename) == -1) {
+            if (server.aof_fd != -1) {
+                if (rename(tmpfile_old, server.aof_filename) == -1) {
                     redisLog(REDIS_WARNING,
                         "Error trying to rename the existing AOF from old tempfile: %s", strerror(errno));
                 }
@@ -1312,26 +1312,26 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
             goto cleanup;
         }
         /* now open the files again with new names */
-        newfd = open(tls_instance_state->server.aof_filename, O_WRONLY|O_APPEND|_O_BINARY,0);
+        newfd = open(server.aof_filename, O_WRONLY|O_APPEND|_O_BINARY,0);
         if (newfd == -1) {
             /* Windows fix: More info */
             redisLog(REDIS_WARNING, "Not able to reopen the temporary AOF file after rename");
             goto cleanup;
         }
-        if (tls_instance_state->server.aof_fd != -1) {
-            tls_instance_state->server.aof_fd = open(
+        if (server.aof_fd != -1) {
+            server.aof_fd = open(
                 tmpfile_old,
                 O_WRONLY|O_APPEND|O_CREAT|_O_BINARY|_O_TEMPORARY,     // _O_TEMPORARY forces delete on close flag in CreateFile call. File will be deleted in REDIS_BIO_CLOSE_FILE job.
                 0644);
         }
 #else
-        if (tls_instance_state->server.aof_fd == -1) {
+        if (server.aof_fd == -1) {
             /* AOF disabled */
 
              /* Don't care if this fails: oldfd will be -1 and we handle that.
               * One notable case of -1 return is if the old file does
               * not exist. */
-             oldfd = open(tls_instance_state->server.aof_filename,O_RDONLY|O_NONBLOCK);
+             oldfd = open(server.aof_filename,O_RDONLY|O_NONBLOCK);
         } else {
             /* AOF enabled */
             oldfd = -1; /* We'll set this to the current AOF filedes later. */
@@ -1340,7 +1340,7 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
         /* Rename the temporary file. This will not unlink the target file if
          * it exists, because we reference it with "oldfd". */
         latencyStartMonitor(latency);
-        if (rename(tmpfile,tls_instance_state->server.aof_filename) == -1) {
+        if (rename(tmpfile,server.aof_filename) == -1) {
             redisLog(REDIS_WARNING,
                 "Error trying to rename the temporary AOF file: %s", strerror(errno));
             close(newfd);
@@ -1351,34 +1351,34 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
         latencyEndMonitor(latency);
         latencyAddSampleIfNeeded("aof-rename",latency);
 
-        if (tls_instance_state->server.aof_fd == -1) {
+        if (server.aof_fd == -1) {
             /* AOF disabled, we don't need to set the AOF file descriptor
              * to this new file, so we can close it. */
             close(newfd);
         } else {
             /* AOF enabled, replace the old fd with the new one. */
-            oldfd = tls_instance_state->server.aof_fd;
-            tls_instance_state->server.aof_fd = newfd;
-            if (tls_instance_state->server.aof_fsync == AOF_FSYNC_ALWAYS)
+            oldfd = server.aof_fd;
+            server.aof_fd = newfd;
+            if (server.aof_fsync == AOF_FSYNC_ALWAYS)
                 aof_fsync(newfd);
-            else if (tls_instance_state->server.aof_fsync == AOF_FSYNC_EVERYSEC)
+            else if (server.aof_fsync == AOF_FSYNC_EVERYSEC)
                 aof_background_fsync(newfd);
-            tls_instance_state->server.aof_selected_db = -1; /* Make sure SELECT is re-issued */
+            server.aof_selected_db = -1; /* Make sure SELECT is re-issued */
             aofUpdateCurrentSize();
-            tls_instance_state->server.aof_rewrite_base_size = tls_instance_state->server.aof_current_size;
+            server.aof_rewrite_base_size = server.aof_current_size;
 
             /* Clear regular AOF buffer since its contents was just written to
              * the new AOF from the background rewrite buffer. */
-            sdsfree(tls_instance_state->server.aof_buf);
-            tls_instance_state->server.aof_buf = sdsempty();
+            sdsfree(server.aof_buf);
+            server.aof_buf = sdsempty();
         }
 
-        tls_instance_state->server.aof_lastbgrewrite_status = REDIS_OK;
+        server.aof_lastbgrewrite_status = REDIS_OK;
 
         redisLog(REDIS_NOTICE, "Background AOF rewrite finished successfully");
         /* Change state from WAIT_REWRITE to ON if needed */
-        if (tls_instance_state->server.aof_state == REDIS_AOF_WAIT_REWRITE)
-            tls_instance_state->server.aof_state = REDIS_AOF_ON;
+        if (server.aof_state == REDIS_AOF_WAIT_REWRITE)
+            server.aof_state = REDIS_AOF_ON;
 
         /* Asynchronously close the overwritten AOF. */
         if (oldfd != -1) bioCreateBackgroundJob(REDIS_BIO_CLOSE_FILE, (void*) (PORT_LONG) oldfd, NULL, NULL);
@@ -1386,12 +1386,12 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
         redisLog(REDIS_VERBOSE,
             "Background AOF rewrite signal handler took %lldus", ustime()-now);
     } else if (!bysignal && exitcode != 0) {
-        tls_instance_state->server.aof_lastbgrewrite_status = REDIS_ERR;
+        server.aof_lastbgrewrite_status = REDIS_ERR;
 
         redisLog(REDIS_WARNING,
             "Background AOF rewrite terminated with error");
     } else {
-        tls_instance_state->server.aof_lastbgrewrite_status = REDIS_ERR;
+        server.aof_lastbgrewrite_status = REDIS_ERR;
 
         redisLog(REDIS_WARNING,
             "Background AOF rewrite terminated by signal %d", bysignal);
@@ -1399,11 +1399,11 @@ void backgroundRewriteDoneHandler(int exitcode, int bysignal) {
 
 cleanup:
     aofRewriteBufferReset();
-    aofRemoveTempFile(IF_WIN32(getpid(), tls_instance_state->server.aof_child_pid));
-    tls_instance_state->server.aof_child_pid = -1;
-    tls_instance_state->server.aof_rewrite_time_last = time(NULL)-tls_instance_state->server.aof_rewrite_time_start;
-    tls_instance_state->server.aof_rewrite_time_start = -1;
+    aofRemoveTempFile(IF_WIN32(getpid(), server.aof_child_pid));
+    server.aof_child_pid = -1;
+    server.aof_rewrite_time_last = time(NULL)-server.aof_rewrite_time_start;
+    server.aof_rewrite_time_start = -1;
     /* Schedule a new rewrite if we are waiting for it to switch the AOF ON. */
-    if (tls_instance_state->server.aof_state == REDIS_AOF_WAIT_REWRITE)
-        tls_instance_state->server.aof_rewrite_scheduled = 1;
+    if (server.aof_state == REDIS_AOF_WAIT_REWRITE)
+        server.aof_rewrite_scheduled = 1;
 }
