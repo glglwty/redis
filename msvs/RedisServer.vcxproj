@@ -36,7 +36,7 @@
     <CLRSupport>false</CLRSupport>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
@@ -158,6 +158,9 @@
       <Inputs>
       </Inputs>
     </CustomBuildStep>
+    <Lib>
+      <AdditionalDependencies>psapi.lib</AdditionalDependencies>
+    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
