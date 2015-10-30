@@ -55,8 +55,8 @@ void RedisEventLog::UninstallEventLogSource() {
         SmartRegistryHandle eventServiceKey;
         if (ERROR_SUCCESS == RegOpenKeyA(eventLogKey, cRedis.c_str(), eventServiceKey)) {
             SmartRegistryHandle eventServiceSubKey;
-			if (ERROR_SUCCESS == RegOpenKeyA(eventServiceKey, cRedisServer.c_str(), eventServiceSubKey)) {
-				if (ERROR_SUCCESS != RegDeleteKeyA(eventServiceKey, cRedisServer.c_str())) {
+            if (ERROR_SUCCESS == RegOpenKeyA(eventServiceKey, cRedisServer.c_str(), eventServiceSubKey)) {
+                if (ERROR_SUCCESS != RegDeleteKeyA(eventServiceKey, cRedisServer.c_str())) {
                     throw std::system_error(GetLastError(), system_category(), "RegDeleteKeyA failed");
                 }
                 if (ERROR_SUCCESS != RegDeleteKeyA(eventLogKey, cRedis.c_str())) {

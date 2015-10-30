@@ -63,9 +63,6 @@
 #include <locale.h>
 #endif
 
-#include "libredis.h"
-#include <malloc.h>
-
 /* Our shared "common" objects */
 
 struct sharedObjectsStruct shared;
@@ -1695,9 +1692,11 @@ void initServer(void) {
     HMODULE lib;
 #endif
 
-    //signal(SIGHUP, SIG_IGN);
-    //signal(SIGPIPE, SIG_IGN);
-    //setupSignalHandlers();
+#ifndef REDIS_RDSN_REPLICATION
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+    setupSignalHandlers();
+#endif
 
 #ifndef _WIN32
     if (server.syslog_enabled) {
@@ -1707,6 +1706,7 @@ void initServer(void) {
 #endif
 
 #ifdef _WIN32
+#ifndef REDIS_RDSN_REPLICATION
      /* Force binary mode on all files */
     _fmode = _O_BINARY;
     setmode(_fileno(stdin),  _O_BINARY);
@@ -1719,6 +1719,7 @@ void initServer(void) {
     /* MingGW 32 lacks declaration of RtlGenRandom, MinGw64 don't */
     lib = LoadLibraryA("advapi32.dll");
     RtlGenRandom = (RtlGenRandomFunc)GetProcAddress(lib, "SystemFunction036");
+#endif
 #endif
 
     server.current_client = NULL;
@@ -1735,17 +1736,14 @@ void initServer(void) {
     server.el = aeCreateEventLoop(server.maxclients+REDIS_EVENTLOOP_FDSET_INCR);
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
-	
+#ifndef REDIS_RDSN_REPLICATION
     /* Open the TCP listening socket for the user commands. */
-	/*
     if (server.port != 0 &&
         listenToPort(server.port,server.ipfd,&server.ipfd_count) == REDIS_ERR)
         exit(1);
-	*/
     /* Open the listening Unix domain socket. */
-	/*
     if (server.unixsocket != NULL) {
-        unlink(server.unixsocket); 
+        unlink(server.unixsocket); /* don't care if this fails */
         server.sofd = anetUnixServer(server.neterr,server.unixsocket,
             server.unixsocketperm, server.tcp_backlog);
         if (server.sofd == ANET_ERR) {
@@ -1754,16 +1752,13 @@ void initServer(void) {
         }
         anetNonBlock(NULL,server.sofd);
     }
-	*/
-	
+
     /* Abort if there are no listening sockets at all. */
-	/*
     if (server.ipfd_count == 0 && server.sofd < 0) {
         redisLog(REDIS_WARNING, "Configured to not listen anywhere, exiting.");
         exit(1);
     }
-	*/
-	
+#endif
     /* Create the Redis databases, and initialize other internal state. */
     for (j = 0; j < server.dbnum; j++) {
         server.db[j].dict = dictCreate(&dbDictType,NULL);
@@ -1800,20 +1795,16 @@ void initServer(void) {
     server.repl_good_slaves_count = 0;
     updateCachedTime();
 
-	
-
+#ifndef REDIS_RDSN_REPLICATION
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
-	/*
     if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         redisPanic("Can't create the serverCron time event.");
         exit(1);
     }
-	*/
 
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
-	/*
     for (j = 0; j < server.ipfd_count; j++) {
         if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,
             acceptTcpHandler,NULL) == AE_ERR)
@@ -1822,13 +1813,9 @@ void initServer(void) {
                     "Unrecoverable error creating server.ipfd file event.");
             }
     }
-	*/
-	/*
     if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) redisPanic("Unrecoverable error creating server.sofd file event.");
-	*/
     /* Open the AOF file if needed. */
-	/*
     if (server.aof_state == REDIS_AOF_ON) {
 #ifdef _WIN32
         server.aof_fd = open(server.aof_filename,
@@ -1843,8 +1830,8 @@ void initServer(void) {
             exit(1);
         }
     }
+#endif
 
-	*/
     /* 32 bit instances are limited to 4GB of address space, so if there is
      * no explicit limit in the user provided configuration we set a limit
      * at 3 GB using maxmemory with 'noeviction' policy'. This avoids
@@ -1859,8 +1846,9 @@ void initServer(void) {
     scriptingInit();
     slowlogInit();
     latencyMonitorInit();
-	//XXX by Tianyi: Fuck this silly function!
-    //bioInit();
+#ifndef REDIS_RDSN_REPLICATION
+    bioInit();
+#endif
 }
 
 /* Populates the Redis Command Table starting from the hard coded list
@@ -2115,7 +2103,6 @@ int processCommand(redisClient *c) {
         return REDIS_ERR;
     }
 
-	
     /* Now lookup the command and check ASAP about trivial error conditions
      * such as wrong arity, bad command name and so forth. */
     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
@@ -3546,202 +3533,3 @@ int main(int argc, char **argv) {
 }
 
 /* The End */
-
-
-void *libredis_new_instance(const char* load_filename, int argc, char **argv)
-{
-
-	//init malloc
-	g_malloc = malloc;
-	g_calloc = calloc;
-	g_realloc = realloc;
-	g_free = free;
-	g_msize = _msize;
-	//init server
-	instance_state_t *instance = tls_instance_state = (instance_state_t*)malloc(sizeof(instance_state_t));
-	memset(tls_instance_state, 0, sizeof(instance_state_t));
-
-	//init
-	struct timeval tv;
-
-	/* We need to initialize our libraries, and the server configuration. */
-#ifdef INIT_SETPROCTITLE_REPLACEMENT
-	spt_init(argc, argv);
-#endif
-	setlocale(LC_COLLATE, "");
-	zmalloc_enable_thread_safeness();
-	zmalloc_set_oom_handler(redisOutOfMemoryHandler);
-	srand((unsigned int)time(NULL) ^ getpid());
-	gettimeofday(&tv, NULL);
-	dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
-	server.sentinel_mode = checkForSentinelMode(argc, argv);
-	initServerConfig();
-
-	/* We need to init sentinel right now as parsing the configuration file
-	* in sentinel mode will have the effect of populating the sentinel
-	* data structures with master nodes to monitor. */
-	if (server.sentinel_mode) {
-		initSentinelConfig();
-		initSentinel();
-	}
-
-	if (argc >= 2) {
-		int j = 1; /* First option to parse in argv[] */
-		sds options = sdsempty();
-		char *configfile = NULL;
-
-		/* Handle special options --help and --version */
-		if (strcmp(argv[1], "-v") == 0 ||
-			strcmp(argv[1], "--version") == 0) version();
-		if (strcmp(argv[1], "--help") == 0 ||
-			strcmp(argv[1], "-h") == 0) usage();
-		if (strcmp(argv[1], "--test-memory") == 0) {
-			if (argc == 3) {
-				memtest(atoi(argv[2]), IF_WIN32(5, 50));
-				exit(0);
-			}
-			else {
-				fprintf(stderr, "Please specify the amount of memory to test in megabytes.\n");
-				fprintf(stderr, "Example: ./redis-server --test-memory 4096\n\n");
-				exit(1);
-			}
-		}
-
-		/* First argument is the config file name? */
-		if (argv[j][0] != '-' || argv[j][1] != '-')
-			configfile = argv[j++];
-		/* All the other options are parsed and conceptually appended to the
-		* configuration file. For instance --port 6380 will generate the
-		* string "port 6380\n" to be parsed after the actual file name
-		* is parsed, if any. */
-		while (j != argc) {
-			if (argv[j][0] == '-' && argv[j][1] == '-') {
-				/* Option name */
-				if (sdslen(options)) options = sdscat(options, "\n");
-				options = sdscat(options, argv[j] + 2);
-				options = sdscat(options, " ");
-			}
-			else {
-				/* Option argument */
-				options = sdscatrepr(options, argv[j], strlen(argv[j]));
-				options = sdscat(options, " ");
-			}
-			j++;
-		}
-		if (server.sentinel_mode && configfile && *configfile == '-') {
-			redisLog(REDIS_WARNING,
-				"Sentinel config from STDIN not allowed.");
-			redisLog(REDIS_WARNING,
-				"Sentinel needs config file on disk to save state.  Exiting...");
-			exit(1);
-		}
-		if (configfile) server.configfile = getAbsolutePath(configfile);
-
-		resetServerSaveParams();
-		loadServerConfig(configfile, options);
-		sdsfree(options);
-	}
-	else {
-		redisLog(REDIS_WARNING, "Warning: no config file specified, using the default config. In order to specify a config file use %s /path/to/%s.conf", argv[0], server.sentinel_mode ? "sentinel" : "redis");
-	}
-
-
-
-	if (server.daemonize) daemonize();
-	
-	initServer();
-	
-	if (server.daemonize) createPidFile();
-	//redisSetProcTitle(argv[0]);
-	//redisAsciiArt();
-
-	
-	assert(!server.sentinel_mode);
-
-	
-
-	if (!server.sentinel_mode) {
-		/* Things not needed when running in Sentinel mode. */
-		redisLog(REDIS_WARNING, "Server started, Redis version " REDIS_VERSION);
-#ifdef __linux__
-		linuxMemoryWarnings();
-#endif
-		checkTcpBacklogSettings();
-		//loadDataFromDisk();
-
-		if (load_filename != NULL)
-		{
-			if (rdbLoad((char*)load_filename) != REDIS_OK) {
-				return NULL;
-			}
-		}
-		
-
-
-		if (server.ipfd_count > 0)
-			redisLog(REDIS_NOTICE, "The server is now ready to accept connections on port %d", server.port);
-		if (server.sofd > 0)
-			redisLog(REDIS_NOTICE, "The server is now ready to accept connections at %s", server.unixsocket);
-	}
-	else {
-		sentinelIsRunning();
-	}
-
-	
-	/* Warning the user about suspicious maxmemory setting. */
-	if (server.maxmemory > 0 && server.maxmemory < 1024 * 1024) {
-		redisLog(REDIS_WARNING, "WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
-	}
-
-	//aeSetBeforeSleepProc(server.el, beforeSleep);
-	//aeMain(server.el);
-	//aeDeleteEventLoop(server.el);
-
-
-	//
-	return (void*)instance;
-}
-
-void libredis_set_instance(void*pinst)
-{
-	tls_instance_state = (instance_state_t*)pinst;
-
-}
-
-reply_t libredis_call(const char *cmdbuf, int len)
-{
-	redisClient *c = server.lua_client;
-	sdsclear(c->querybuf);
-	c->querybuf = sdscatlen(c->querybuf, (void*)cmdbuf, len);
-	//printf("querybuf: %s\n", c->querybuf);
-	processInputBuffer(c);
-
-	sds reply;
-	reply = sdsnewlen(c->buf, c->bufpos);
-	c->bufpos = 0;
-	while (listLength(c->reply)) {
-		robj *o = listNodeValue(listFirst(c->reply));
-
-		reply = sdscatlen(reply, o->ptr, sdslen(o->ptr));
-		listDelNode(c->reply, listFirst(c->reply));
-	}
-	reply_t result;
-
-	//printf("reply....%s len = %d\n", reply, sdslen(reply));
-	c->reply_bytes = 0;
-
-
-	result.buf = reply;
-	result.len = sdslen(reply);
-	return result;
-}
-
-void libredis_drop_reply(reply_t *reply)
-{
-	sdsfree(reply->buf);
-}
-
-int libredis_save(const char* filename)
-{
-	return rdbSave((char*)filename) == REDIS_OK ? 0 : -1;
-}

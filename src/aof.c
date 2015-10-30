@@ -1119,7 +1119,7 @@ int rewriteAppendOnlyFileBackground(void) {
 #endif
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) getpid());
 #ifdef _WIN32
-		childpid = BeginForkOperation_Aof(tmpfile, &server, sizeof(server), dictGetHashFunctionSeed(), server.logfile);
+        childpid = BeginForkOperation_Aof(tmpfile, &server, sizeof(server), dictGetHashFunctionSeed(), server.logfile);
 #else
         if (rewriteAppendOnlyFile(tmpfile) == REDIS_OK) {
             size_t private_dirty = zmalloc_get_private_dirty();

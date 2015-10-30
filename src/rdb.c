@@ -762,7 +762,6 @@ int rdbSave(char *filename) {
         goto werr;
     }
 
-
     /* Make sure data will not remain on the OS's output buffers */
     if (fflush(fp) == EOF) goto werr;
     if (fsync(fileno(fp)) == -1) goto werr;
@@ -799,7 +798,7 @@ int rdbSaveBackground(char *filename) {
 
     start = ustime();
 #ifdef _WIN32
-	childpid = BeginForkOperation_Rdb(filename, &server, sizeof(server), dictGetHashFunctionSeed(), server.logfile);
+    childpid = BeginForkOperation_Rdb(filename, &server, sizeof(server), dictGetHashFunctionSeed(), server.logfile);
 #else
     if ((childpid = fork()) == 0) {
         int retval;
@@ -1272,7 +1271,11 @@ int rdbLoad(char *filename) {
 
 eoferr: /* unexpected end of file is handled here with a fatal exit */
     redisLog(REDIS_WARNING,"Short read or OOM loading DB. Unrecoverable error, aborting now.");
+#ifndef REDIS_RDSN_REPLICATION
     exit(1);
+#else
+	fclose(fp);
+#endif
     return REDIS_ERR; /* Just to avoid warning */
 }
 
@@ -1471,7 +1474,7 @@ int rdbSaveToSlavesSockets(void) {
     start = ustime();
 
 #ifdef _WIN32
-	childpid = BeginForkOperation_Socket(fds, numfds, clientids, pipefds[1], &server, sizeof(server), dictGetHashFunctionSeed(), server.logfile);
+    childpid = BeginForkOperation_Socket(fds, numfds, clientids, pipefds[1], &server, sizeof(server), dictGetHashFunctionSeed(), server.logfile);
 #else
     if ((childpid = fork()) == 0) {
         /* Child */

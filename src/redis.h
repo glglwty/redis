@@ -951,6 +951,7 @@ typedef struct
 extern __declspec(thread) instance_state_t *tls_instance_state;
 
 #define server tls_instance_state->server
+#define exit abort
 
 
 extern struct sharedObjectsStruct shared;

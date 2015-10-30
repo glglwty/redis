@@ -101,7 +101,7 @@ namespace dsn {
 			}
 			else
 			{
-				std::cout << "trying to load old database" << std::endl;
+				
 				std::string load_path;
 				_last_durable_decree = parse_for_checkpoints();
 				if (!_checkpoints.empty()) {
@@ -120,7 +120,7 @@ namespace dsn {
 						return 1;
 					}
 				}
-
+				std::cout << "trying to load old database " << load_path << std::endl;
 				char *argv[] = { "redis.exe" };
 				if (nullptr == (libredis_instance = libredis_new_instance(load_path.empty() ? nullptr : utils::filesystem::path_combine(load_path, "dump.rdb").c_str(), 1, argv)))
 				{
@@ -130,6 +130,7 @@ namespace dsn {
 				std::cout << "libredis instance created!!!!!" << std::endl;
 			}
 			_is_open = true;
+			gc_checkpoints();
 			dassert(last_committed_decree() == last_durable_decree(), "open postcondition test failed");
 			return 0;
 		}
@@ -137,18 +138,15 @@ namespace dsn {
 		int  repis_service_impl::close(bool clear_state)
 		{
 			service::zauto_lock _(_lock);
-			dassert(_is_open, "repis service %s is not ready", data_dir().c_str());
-			if (clear_state) {
-				_checkpoints.clear();
-				if (utils::filesystem::directory_exists(data_dir())) {
-					utils::filesystem::remove_path(data_dir());
+			if (_is_open) {
+				if (clear_state) {
+					_checkpoints.clear();
+					if (utils::filesystem::directory_exists(data_dir())) {
+						utils::filesystem::remove_path(data_dir());
+					}
 				}
+				_is_open = false;
 			}
-			else
-			{
-				flush(true);
-			}
-			_is_open = false;
 			//redis does not support close! yeah! you have to shutdown the process!
 			return 0;
 		}

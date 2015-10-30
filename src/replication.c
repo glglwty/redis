@@ -1768,7 +1768,7 @@ void replicationCacheMaster(redisClient *c) {
     redisAssert(ln != NULL);
     listDelNode(server.clients,ln);
 
-    /* Save the master. server.master will be set to null later by
+    /* Save the master. Server.master will be set to null later by
      * replicationHandleMasterDisconnection(). */
     server.cached_master = server.master;
 
