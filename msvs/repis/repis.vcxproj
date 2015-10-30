@@ -388,7 +388,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\v-tianw\Documents\projects\bottle\redis\src-repis\repis.server.impl.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\RedisServer.vcxproj">
+    <ProjectReference Include="..\libredis.vcxproj">
       <Project>{46842776-68a5-ec98-6a09-1859bbfc73aa}</Project>
       <Private>false</Private>
       <ReferenceOutputAssembly>true</ReferenceOutputAssembly>

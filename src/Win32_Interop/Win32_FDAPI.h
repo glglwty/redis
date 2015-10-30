@@ -254,6 +254,7 @@ BOOL ParseStorageAddress(const char *ip, int port, SOCKADDR_STORAGE* pSotrageAdd
 #define fwrite(Str, Size, Count, File) fdapi_fwrite(Str,Size,Count,File)
 #define fclose(File) fdapi_fclose(File)
 #define fileno(File) fdapi_fileno(File)
+#define _get_osfhandle(fd) fdapi_get_osfhandle(fd)
 
 #define _INC_STAT_INL
 #define fstat(_Desc, _Stat) fdapi_fstat64(_Desc,_Stat)

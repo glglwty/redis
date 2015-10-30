@@ -20,11 +20,11 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{46842776-68A5-EC98-6A09-1859BBFC73AA}</ProjectGuid>
+    <ProjectGuid>{252A39C1-15E4-43DB-AFB4-3F57BA48640B}</ProjectGuid>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v120</PlatformToolset>
     <CLRSupport>false</CLRSupport>
@@ -32,18 +32,18 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
     <CLRSupport>false</CLRSupport>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v120_xp</PlatformToolset>
+    <PlatformToolset>v120</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -84,7 +84,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>REDIS_RDSN_REPLICATION;_OFF_T_DEFINED;WIN32_IOCP;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;_DEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);USE_DLMALLOC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;WIN32_IOCP;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;_DEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);USE_DLMALLOC</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(SolutionDir)..\deps\lua\src;$(SolutionDir)..\deps\hiredis</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
@@ -102,13 +102,10 @@
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <IgnoreSpecificDefaultLibraries>MSVCRT.lib</IgnoreSpecificDefaultLibraries>
     </Link>
-    <Lib>
-      <AdditionalDependencies>psapi.lib</AdditionalDependencies>
-    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>REDIS_RDSN_REPLICATION;_OFF_T_DEFINED;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;_DEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);USE_DLMALLOC;WIN32_IOCP;_WIN32_WINNT=0x0501</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;_DEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);USE_DLMALLOC;WIN32_IOCP;_WIN32_WINNT=0x0501</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(SolutionDir)..\deps\lua\src;$(SolutionDir)..\deps\hiredis</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
@@ -129,7 +126,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>REDIS_RDSN_REPLICATION;_OFF_T_DEFINED;WIN32_IOCP;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;NDEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);USE_DLMALLOC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;WIN32_IOCP;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;NDEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);USE_DLMALLOC</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(SolutionDir)..\deps\lua\src;$(SolutionDir)..\deps\hiredis</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
@@ -158,13 +155,10 @@
       <Inputs>
       </Inputs>
     </CustomBuildStep>
-    <Lib>
-      <AdditionalDependencies>psapi.lib</AdditionalDependencies>
-    </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>REDIS_RDSN_REPLICATION;_OFF_T_DEFINED;_WIN32IOCP;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;NDEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);WIN32_IOCP;USE_DLMALLOC;_WIN32_WINNT=0x0501</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;_WIN32IOCP;WIN32;USE_DL_PREFIX;LACKS_STDLIB_H;NDEBUG;_CONSOLE;__x86_64__;%(PreprocessorDefinitions);WIN32_IOCP;USE_DLMALLOC;_WIN32_WINNT=0x0501</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(SolutionDir)..\deps\lua\src;$(SolutionDir)..\deps\hiredis</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
@@ -203,7 +197,6 @@
     <ClCompile Include="..\src\hyperloglog.c" />
     <ClCompile Include="..\src\intset.c" />
     <ClCompile Include="..\src\latency.c" />
-    <ClCompile Include="..\src\libredis.c" />
     <ClCompile Include="..\src\lzf_c.c" />
     <ClCompile Include="..\src\lzf_d.c" />
     <ClCompile Include="..\src\memtest.c" />
@@ -250,7 +243,6 @@
     <ClInclude Include="..\src\help.h" />
     <ClInclude Include="..\src\intset.h" />
     <ClInclude Include="..\src\latency.h" />
-    <ClInclude Include="..\src\libredis.h" />
     <ClInclude Include="..\src\lzf.h" />
     <ClInclude Include="..\src\lzfP.h" />
     <ClInclude Include="..\src\pqsort.h" />

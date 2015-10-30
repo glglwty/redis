@@ -76,7 +76,11 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
 /*================================= Globals ================================= */
 
 /* Global vars */
+#ifdef REDIS_RDSN_REPLICATION
 __declspec(thread) instance_state_t *tls_instance_state; /* server global state */
+#else
+struct redisServer server;
+#endif
 
 /* Our command table.
  *

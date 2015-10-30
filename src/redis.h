@@ -942,7 +942,7 @@ typedef struct {
 /*-----------------------------------------------------------------------------
  * Extern declarations
  *----------------------------------------------------------------------------*/
-
+#ifdef  REDIS_RDSN_REPLICATION
 typedef struct
 {
 	struct redisServer server;
@@ -952,7 +952,9 @@ extern __declspec(thread) instance_state_t *tls_instance_state;
 
 #define server tls_instance_state->server
 #define exit abort
-
+#else
+extern struct redisServer server;
+#endif
 
 extern struct sharedObjectsStruct shared;
 extern dictType setDictType;

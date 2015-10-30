@@ -1,20 +1,36 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug|Win32">
-      <Configuration>Debug</Configuration>
+    <ProjectConfiguration Include="server-Debug|Win32">
+      <Configuration>server-Debug</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="Debug|x64">
-      <Configuration>Debug</Configuration>
+    <ProjectConfiguration Include="server-Debug|x64">
+      <Configuration>server-Debug</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|Win32">
-      <Configuration>Release</Configuration>
+    <ProjectConfiguration Include="libredis-Debug|Win32">
+      <Configuration>libredis-Debug</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|x64">
-      <Configuration>Release</Configuration>
+    <ProjectConfiguration Include="libredis-Debug|x64">
+      <Configuration>libredis-Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="libredis-Release|Win32">
+      <Configuration>libredis-Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="libredis-Release|x64">
+      <Configuration>libredis-Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="server-Release|Win32">
+      <Configuration>server-Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="server-Release|x64">
+      <Configuration>server-Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
@@ -66,30 +82,54 @@
   <ItemGroup>
     <CustomBuild Include="EventLog.mc">
       <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">md resources
+      <Command Condition="'$(Configuration)|$(Platform)'=='server-Debug|x64'">md resources
 mc.exe -A -b -c -h . -r resources EventLog.mc
 rc.exe -foresources/EventLog.res resources/EventLog.rc
 link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
 </Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">md resources
+      <Command Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|x64'">md resources
 mc.exe -A -b -c -h . -r resources EventLog.mc
 rc.exe -foresources/EventLog.res resources/EventLog.rc
 link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
 </Command>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">EventLog.h</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">EventLog.h</Outputs>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">md resources
+      <Command Condition="'$(Configuration)|$(Platform)'=='server-Debug|Win32'">md resources
 mc.exe -A -b -c -h . -r resources EventLog.mc
 rc.exe -foresources/EventLog.res resources/EventLog.rc
 link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
 </Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">md resources
+      <Command Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|Win32'">md resources
 mc.exe -A -b -c -h . -r resources EventLog.mc
 rc.exe -foresources/EventLog.res resources/EventLog.rc
 link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
 </Command>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">EventLog.h</Outputs>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">EventLog.h</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='server-Debug|x64'">EventLog.h</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|x64'">EventLog.h</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='server-Debug|Win32'">EventLog.h</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|Win32'">EventLog.h</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='server-Release|x64'">md resources
+mc.exe -A -b -c -h . -r resources EventLog.mc
+rc.exe -foresources/EventLog.res resources/EventLog.rc
+link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
+</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='libredis-Release|x64'">md resources
+mc.exe -A -b -c -h . -r resources EventLog.mc
+rc.exe -foresources/EventLog.res resources/EventLog.rc
+link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
+</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='server-Release|Win32'">md resources
+mc.exe -A -b -c -h . -r resources EventLog.mc
+rc.exe -foresources/EventLog.res resources/EventLog.rc
+link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
+</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='libredis-Release|Win32'">md resources
+mc.exe -A -b -c -h . -r resources EventLog.mc
+rc.exe -foresources/EventLog.res resources/EventLog.rc
+link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
+</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='server-Release|x64'">EventLog.h</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='libredis-Release|x64'">EventLog.h</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='server-Release|Win32'">EventLog.h</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='libredis-Release|Win32'">EventLog.h</Outputs>
     </CustomBuild>
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -99,26 +139,52 @@ link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
     <ProjectName>Win32_Interop</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='server-Debug|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v120</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v120</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='server-Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v120_xp</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v120_xp</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='server-Release|x64'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v120</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v120</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='server-Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v120_xp</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Release|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v120_xp</PlatformToolset>
@@ -128,21 +194,52 @@ link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='server-Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='server-Debug|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='server-Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='server-Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup />
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='server-Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;WIN32_IOCP;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions);USE_DL_PREFIX;LACKS_STDLIB_H;USE_DLMALLOC;_CRT_SECURE_NO_WARNINGS;PSAPI_VERSION=1</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\deps\lua\src</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <Lib>
+      <IgnoreSpecificDefaultLibraries>MSVCRT</IgnoreSpecificDefaultLibraries>
+      <AdditionalDependencies>DbgHelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|x64'">
     <ClCompile>
       <PrecompiledHeader>
       </PrecompiledHeader>
@@ -161,7 +258,30 @@ link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
       <AdditionalDependencies>DbgHelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Lib>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='server-Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions);USE_DL_PREFIX;LACKS_STDLIB_H;USE_DLMALLOC;_CRT_SECURE_NO_WARNINGS;WIN32_IOCP;PSAPI_VERSION=1;_WIN32_WINNT=0x0501</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\deps\lua\src</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <Lib>
+      <IgnoreSpecificDefaultLibraries>MSVCRT</IgnoreSpecificDefaultLibraries>
+      <AdditionalDependencies>DbgHelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+    <CustomBuild>
+      <Command>
+      </Command>
+    </CustomBuild>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|Win32'">
     <ClCompile>
       <PrecompiledHeader>
       </PrecompiledHeader>
@@ -184,7 +304,30 @@ link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
       </Command>
     </CustomBuild>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='server-Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>Full</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;WIN32_IOCP;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions);USE_DL_PREFIX;LACKS_STDLIB_H;USE_DLMALLOC;_CRT_SECURE_NO_WARNINGS;PSAPI_VERSION=1</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\deps\lua\src</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+    <Lib>
+      <AdditionalDependencies>DbgHelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <PrecompiledHeader>
@@ -207,7 +350,33 @@ link.exe -dll -noentry resources/EventLog.res -out:$(TargetDir)EventLog.dll
       <AdditionalDependencies>DbgHelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Lib>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='server-Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>_OFF_T_DEFINED;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions);_WIN32IOCP;USE_DL_PREFIX;LACKS_STDLIB_H;USE_DLMALLOC;_CRT_SECURE_NO_WARNINGS;PSAPI_VERSION=1;_WIN32_WINNT=0x0501</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\deps\lua\src</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+    <Lib>
+      <AdditionalDependencies>DbgHelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Lib>
+    <CustomBuild>
+      <Command>
+      </Command>
+    </CustomBuild>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Release|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <PrecompiledHeader>
