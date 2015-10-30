@@ -30,7 +30,6 @@ namespace dsn {
 
 		static void libredis_call_wrapper(const std::string& command)
 		{
-
 			auto reply = libredis_call(command.c_str(), command.size());
 			libredis_drop_reply(&reply);
 		}
@@ -53,8 +52,6 @@ namespace dsn {
 		repis_service_impl::repis_service_impl(::dsn::replication::replica* replica)
 			: repis_service(replica), libredis_instance(nullptr), _max_checkpoint_count(3), _is_open(false), _lock(true)
 		{
-			utils::filesystem::get_current_directory(work_directory);
-			std::cout << "work directory = " << work_directory << std::endl;
 		}
 
 		void repis_service_impl::on_read(const ::dsn::blob& request, ::dsn::rpc_replier<::dsn::blob>& reply)
@@ -63,7 +60,6 @@ namespace dsn {
 			dassert(_is_open, "repis service %s is not ready", data_dir().c_str());
 			libredis_set_instance(libredis_instance);
 			auto result = libredis_call(request.data(), request.length());
-			//std::cout << "on_read! request = " << request.data() << " length = " << result.len << "content = " << result.buf << std::endl;
 			reply(::dsn::blob(result.buf, 0, result.len));
 			libredis_drop_reply(&result);
 		}
@@ -75,7 +71,6 @@ namespace dsn {
 			libredis_set_instance(libredis_instance);
 			auto result = libredis_call(request.data(), request.length());
 			_last_committed_decree.fetch_add(1);
-			//std::cout << "on_write! request = " << request.data() << " length = " << result.len << "content = " << result.buf << std::endl;
 			reply(::dsn::blob(result.buf, 0, result.len));
 			libredis_drop_reply(&result);
 		}
@@ -85,7 +80,6 @@ namespace dsn {
 			service::zauto_lock _(_lock);
 			dassert(!_is_open, "repis service %s is already opened", data_dir().c_str());
 			if (create_new) {
-				std::cout << "trying to create a new instance!!!!!!!!!!!!" << std::endl;
 				auto& dir = data_dir();
 				dsn::utils::filesystem::remove_path(dir);
 				dsn::utils::filesystem::create_directory(dir);
@@ -93,21 +87,17 @@ namespace dsn {
 				_last_committed_decree = 0;
 				_checkpoints.clear();
 				if (nullptr == (libredis_instance = libredis_new_instance(nullptr, 1, argv))) {
-					//XXX can this really happen in production?!
 					derror("cannot create an empty redis instance");
 					return -1;
 				}
-				std::cout << "libredis instance created!!!!!" << std::endl;
+				dinfo("libredis instance created");
 			}
 			else
 			{
-				
 				std::string load_path;
 				_last_durable_decree = parse_for_checkpoints();
 				if (!_checkpoints.empty()) {
 					load_path = utils::filesystem::path_combine(data_dir(), chkpt_get_dir_name(*_checkpoints.rbegin()));
-
-
 					replication::decree temporary_decree;
 					if (std::ifstream(utils::filesystem::path_combine(load_path, "serial_number")) >> temporary_decree)
 					{
@@ -115,19 +105,17 @@ namespace dsn {
 					}
 					else
 					{
-						std::cout << "load database failed" << std::endl;
-						dassert(false, "load database failed");
+						dwarn("load database failed");
 						return 1;
 					}
 				}
-				std::cout << "trying to load old database " << load_path << std::endl;
 				char *argv[] = { "redis.exe" };
 				if (nullptr == (libredis_instance = libredis_new_instance(load_path.empty() ? nullptr : utils::filesystem::path_combine(load_path, "dump.rdb").c_str(), 1, argv)))
 				{
 					derror("cannot create an empty redis instance");
 					return -1;
 				}
-				std::cout << "libredis instance created!!!!!" << std::endl;
+				dinfo("libredis instance created");
 			}
 			_is_open = true;
 			gc_checkpoints();
@@ -155,7 +143,7 @@ namespace dsn {
 		int  repis_service_impl::flush(bool wait)
 		{
 			service::zauto_lock _(_lock);
-			std::cout << "flushing..replica...." << replica_name() << std::endl;
+            dinfo("flushing replica");
 			libredis_set_instance(libredis_instance);
 			dassert(_is_open, "repis service %s is not ready", data_dir().c_str());
 			if (last_durable_decree() == last_committed_decree()) {
@@ -170,16 +158,13 @@ namespace dsn {
 					utils::filesystem::remove_path(temp_dir1);
 				return 1;
 			} 
-			while (!utils::filesystem::rename_path(temp_dir1, chkpt_dir))
-			{
-				std::cout << "your file system is totally broken" << std::endl;
-			}
-
+            while (!utils::filesystem::rename_path(temp_dir1, chkpt_dir))
+            {
+                dwarn("rename checkpoint dir failed");
+            }
 			_last_durable_decree = last_committed_decree();
 			_checkpoints.push_back(last_committed_decree());
-
 			gc_checkpoints();
-			std::cout << "flush succeed!\n" << std::endl;
 			dassert(last_committed_decree() == last_durable_decree(), "flush postcondition test failed");
 			return 0;
 		}
@@ -210,7 +195,6 @@ namespace dsn {
 		int  repis_service_impl::apply_learn_state(::dsn::replication::learn_state& state)
 		{
 			service::zauto_lock _(_lock);
-			std::cout << "trying to recovery...... from " << data_dir() << std::endl;
 			int err = 0;
 			if (_is_open)
 			{
@@ -245,15 +229,13 @@ namespace dsn {
 				return ERR_FILE_OPERATION_FAILED;
 			}
 			
-			std::cout << "rename succeed ~!!! check it out!" << std::endl;
-
 			// reopen the db with the new checkpoint files
 			if (state.files.size() > 0) {
 				err = open(false);
-				std::cout << "learned decree" << last_committed_decree() << std::endl;
 			}
-			else
-				err = open(true);
+            else {
+                err = open(true);
+            }
 
 			if (err != 0)
 			{
@@ -274,39 +256,16 @@ namespace dsn {
 
 			if (libredis_save(utils::filesystem::path_combine(chkpt_dir, "dump.rdb").c_str()) != 0)
 			{
-				std::cout << "oh my god redis flush failed" << std::endl;
-				getchar();
-				if (utils::filesystem::directory_exists(chkpt_dir))
-					utils::filesystem::remove_path(chkpt_dir);
+				dwarn("redis flush failed");
+		    	if (utils::filesystem::directory_exists(chkpt_dir))
+				    utils::filesystem::remove_path(chkpt_dir);
 				return 1;
-			}
-
-			if (!libredis_boolean_call_wrapper(build_command({ "config", "set", "dir", work_directory })))
+		    }
 			{
-				std::cout << "chdir failed" << std::endl;
-				getchar();
-				return 1;
-			}
-
-			{
-				auto serial_num_filename = utils::filesystem::path_combine(chkpt_dir, "serial_number");
-				//XXX use builtin aio here?
-				std::ofstream serial_file(serial_num_filename.c_str());
-				if (!serial_file.is_open())
+				auto serial_num_filename = utils::filesystem::path_combine(chkpt_dir, "serial_number");	;
+                if (!(std::ofstream(serial_num_filename.c_str()) << last_committed_decree()))
 				{
-					std::cout << "cannot open serial file" << std::endl;
-
-					getchar();
-					if (utils::filesystem::directory_exists(chkpt_dir))
-						utils::filesystem::remove_path(chkpt_dir);
-					return 1;
-				}
-				if (!(serial_file << last_committed_decree()))
-				{
-					std::cout << "cannot output lastcommitted decree" << std::endl;
-
-					getchar();
-
+                    dwarn("write last committed decree failed");
 					if (utils::filesystem::directory_exists(chkpt_dir))
 						utils::filesystem::remove_path(chkpt_dir);
 					return 1;
@@ -318,24 +277,24 @@ namespace dsn {
 		replication::decree repis_service_impl::parse_for_checkpoints()
 		{
 			service::zauto_lock _(_lock);
-				std::vector<std::string> dirs;
-				utils::filesystem::get_subdirectories(data_dir(), dirs, false);
+			std::vector<std::string> dirs;
+			utils::filesystem::get_subdirectories(data_dir(), dirs, false);
 
-				_checkpoints.clear();
-				for (auto& d : dirs)
+			_checkpoints.clear();
+			for (auto& d : dirs)
+			{
+				replication::decree temporary_decree;
+				std::string d1 = d;
+				d1 = d1.substr(data_dir().length() + 1);
+				if (chkpt_init_from_dir(d1.c_str(), temporary_decree))
 				{
-					replication::decree temporary_decree;
-					std::string d1 = d;
-					d1 = d1.substr(data_dir().length() + 1);
-					if (chkpt_init_from_dir(d1.c_str(), temporary_decree))
-					{
-						_checkpoints.push_back(temporary_decree);
-					}
+					_checkpoints.push_back(temporary_decree);
 				}
+			}
 
-				std::sort(_checkpoints.begin(), _checkpoints.end());
+			std::sort(_checkpoints.begin(), _checkpoints.end());
 
-				return _checkpoints.size() > 0 ? *(_checkpoints.rbegin()) : 0;
+			return _checkpoints.size() > 0 ? *(_checkpoints.rbegin()) : 0;
 		}
 
 		void repis_service_impl::gc_checkpoints()

@@ -27,7 +27,6 @@ namespace dsn {
 			replication::decree parse_for_checkpoints();
 			void gc_checkpoints();
 
-			std::string work_directory;
 			service::zlock _lock;
 			void *libredis_instance;
 			//rrdb does not use lock to protect this vector. I don't know how checkpoint functions are called so just following rrdb should be OK.
