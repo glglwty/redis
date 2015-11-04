@@ -37,7 +37,7 @@
   <PropertyGroup Label="Globals">
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{46842776-68A5-EC98-6A09-1859BBFC73AA}</ProjectGuid>
-    <ProjectName>libredis</ProjectName>
+    <ProjectName>redis</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='libredis-Debug|x64'" Label="Configuration">

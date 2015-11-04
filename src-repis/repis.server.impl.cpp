@@ -79,11 +79,21 @@ namespace dsn {
 		{
 			service::zauto_lock _(_lock);
 			dassert(!_is_open, "repis service %s is already opened", data_dir().c_str());
+            char *argv[] = { "redis.exe" };
 			if (create_new) {
 				auto& dir = data_dir();
-				dsn::utils::filesystem::remove_path(dir);
-				dsn::utils::filesystem::create_directory(dir);
-				char *argv[] = { "redis.exe"};
+                if (dsn::utils::filesystem::directory_exists(dir)) {
+                    if (!dsn::utils::filesystem::remove_path(dir))
+                    {
+                        derror("cannot remove data_dir");
+                        return -1;
+                    }
+                }
+                if (!dsn::utils::filesystem::create_directory(dir))
+                {
+                    derror("cannot create data_dir");
+                    return -1;
+                }
 				_last_committed_decree = 0;
 				_checkpoints.clear();
 				if (nullptr == (libredis_instance = libredis_new_instance(nullptr, 1, argv))) {
@@ -95,24 +105,23 @@ namespace dsn {
 			else
 			{
 				std::string load_path;
-				_last_durable_decree = parse_for_checkpoints();
+                _last_committed_decree = _last_durable_decree = parse_for_checkpoints();
 				if (!_checkpoints.empty()) {
 					load_path = utils::filesystem::path_combine(data_dir(), chkpt_get_dir_name(*_checkpoints.rbegin()));
-					replication::decree temporary_decree;
-					if (std::ifstream(utils::filesystem::path_combine(load_path, "serial_number")) >> temporary_decree)
-					{
-						_last_committed_decree = temporary_decree;
-					}
-					else
-					{
-						dwarn("load database failed");
-						return 1;
-					}
 				}
-				char *argv[] = { "redis.exe" };
 				if (nullptr == (libredis_instance = libredis_new_instance(load_path.empty() ? nullptr : utils::filesystem::path_combine(load_path, "dump.rdb").c_str(), 1, argv)))
 				{
-					derror("cannot create an empty redis instance");
+                    if (load_path.empty()) {
+                        derror("cannot create an new redis instance");
+                    } else
+                    {
+                        derror("cannot load old redis instance");
+                    }
+                    if (!load_path.empty()) {
+                        utils::filesystem::remove_path(load_path);
+                        _checkpoints.pop_back();
+                    }
+                    _last_committed_decree = _last_durable_decree = 0;
 					return -1;
 				}
 				dinfo("libredis instance created");
@@ -133,6 +142,7 @@ namespace dsn {
 						utils::filesystem::remove_path(data_dir());
 					}
 				}
+                _last_committed_decree = _last_durable_decree = 0;
 				_is_open = false;
 			}
 			//redis does not support close! yeah! you have to shutdown the process!
@@ -179,12 +189,7 @@ namespace dsn {
 			const blob& learn_req,
 			/*out*/ ::dsn::replication::learn_state& state)
 		{
-			service::zauto_lock _(_lock);
 			dassert(_is_open, "rrdb service %s is not ready", data_dir().c_str());
-			if (_checkpoints.empty())
-			{
-				flush(true);
-			}
 			auto chkpt_dir = utils::filesystem::path_combine(data_dir(), chkpt_get_dir_name(*_checkpoints.rbegin()));
 			dassert(utils::filesystem::path_exists(chkpt_dir), "checkponit dir does not exist");
 			auto err = utils::filesystem::get_subfiles(chkpt_dir, state.files, true);
@@ -275,8 +280,8 @@ namespace dsn {
 		}
 
 		replication::decree repis_service_impl::parse_for_checkpoints()
-		{
-			service::zauto_lock _(_lock);
+        {
+            service::zauto_lock _(_lock);
 			std::vector<std::string> dirs;
 			utils::filesystem::get_subdirectories(data_dir(), dirs, false);
 
@@ -298,8 +303,8 @@ namespace dsn {
 		}
 
 		void repis_service_impl::gc_checkpoints()
-		{
-			service::zauto_lock _(_lock);
+        {
+            service::zauto_lock _(_lock);
 			while (_checkpoints.size() > _max_checkpoint_count)
 			{
 				auto old_cpt = chkpt_get_dir_name(*_checkpoints.begin());

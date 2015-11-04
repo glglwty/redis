@@ -7,6 +7,14 @@ void initServer();
 
 void *libredis_new_instance(const char* load_filename, int argc, char **argv)
 {
+    if (load_filename == NULL)
+    {
+        printf("new instance!!!\n");
+    } else
+    {
+        printf("load instance %s\n", load_filename);
+    }
+    
 	//init malloc
 	g_malloc = malloc;
 	g_calloc = calloc;
@@ -15,15 +23,20 @@ void *libredis_new_instance(const char* load_filename, int argc, char **argv)
 	g_msize = _msize;
 	//init server
 	instance_state_t *instance = tls_instance_state = (instance_state_t*)malloc(sizeof(instance_state_t));
+    if (instance == NULL)
+    {
+        printf("fatal! cannot allocate repis serer\n");
+        return NULL;
+    }
 	memset(tls_instance_state, 0, sizeof(instance_state_t));
 	struct timeval tv;
 	/* We need to initialize our libraries, and the server configuration. */
 	zmalloc_enable_thread_safeness();
 	srand((unsigned int)time(NULL) ^ getpid());
 	gettimeofday(&tv, NULL);
-	dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());
-	server.sentinel_mode = 0;
-	initServerConfig();
+	dictSetHashFunctionSeed(tv.tv_sec^tv.tv_usec^getpid());;
+    initServerConfig();
+    server.sentinel_mode = 0;
 
 	if (argc >= 2) {
 		int j = 1; /* First option to parse in argv[] */
@@ -109,13 +122,17 @@ int libredis_save(const char* filename)
 {
 	FILE *fp;
 	rio rdb;
-	fp = fopen(filename, "wb");
+	if ((fp = fopen(filename, "wb")) == NULL)
+	{
+        return  -1;
+	}
 	rioInitWithFile(&rdb, fp);
 	int error;
 	if (rdbSaveRio(&rdb, &error) == REDIS_ERR)
-	{
+    {
+
+        fclose(fp);
 		return -1;
-		fclose(fp);
 	}
 	fclose(fp);
 	return 0;
